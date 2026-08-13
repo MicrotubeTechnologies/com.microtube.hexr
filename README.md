@@ -243,7 +243,21 @@ unmodified on another machine — expect to fix those `HintPath`s locally.
   consuming project. Unclear whether these loose, non-`HaptGlove`-namespaced scripts are
   still used or are dead code from before `HaptGlove.dll` existed. Note
   `WindowHaptHandler.targetDeviceName` defaults to `"HaptGloveAR Right"` for both hands.
-- **`package.json` declares `com.meta.xr.sdk.interaction: 71.0.0`** while the code targets
-  the v201 OpenXR hand skeleton (`XRHand_*`). A project that already has 201 is unaffected,
-  but a clean install resolves 71 and the hands will not bind. `"unity": "2021.3"` is
-  likewise below the 2023.2 this is developed against.
+- **Redistribution rights for the Android/macOS Bluetooth binaries are unconfirmed.**
+  `Runtime/Plugins/Android/classes.jar` and `Runtime/Plugins/BluetoothUnityAPI.bundle` are
+  Tony Abou Zaidan's, marked "all rights reserved", and appear to come from a commercial
+  Asset Store plugin. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) — this needs
+  settling, and until it is, those two files should not be treated as redistributable.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+That covers Microtube Technologies' own work: everything under `Runtime/HexR/`,
+`Runtime/MetaOVR/` and `Editor/`, the prefabs and UI, `HaptGlove.dll` and
+`ArduinoBluetoothAPILocal.dll`.
+
+It does **not** cover the third-party binaries bundled under `Runtime/Plugins/`, which stay
+under their own terms and are not sublicensed here. See
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for the list — in particular the Android
+and macOS Bluetooth binaries, whose redistribution status is unresolved.
