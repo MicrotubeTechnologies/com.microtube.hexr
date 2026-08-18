@@ -55,6 +55,10 @@ form does not give you (UPM installs those read-only under `Library/PackageCache
 3. **HexR → Create HexR Rig →** your backend.
 4. **HexR → Auto Setup Scene**, then **HexR → Validate Scene Setup**.
 
+Or run **HexR → Create Demo Scene** to get all of the above plus a grabbable cube, a haptic
+zone and a wired `ProximityCheck` in one command. It picks the backend from whichever SDK is
+actually installed, so nothing cross-backend is serialised.
+
 Full walkthrough in [Getting started in a new project](#getting-started-in-a-new-project)
 below, including the OpenXR-only `ProximityCheck` requirement.
 
@@ -85,8 +89,8 @@ copies of the same assembly is a hard compile error, not a warning.
 - `Runtime/Plugins/` — the precompiled `HaptGlove` runtime and the Bluetooth transport it
   needs. See below.
 - `Editor/` (assembly `HexR.Editor`) — the `HexR` toolbar menu (`HexRMenu.cs`: Create HexR
-  Rig, Add HexR Panel, Auto Setup Scene, Validate Scene Setup, and one-off Migration
-  commands) and the `HexRToolsWindow` window: Haptics Tester, HexR Setup (scene checklist)
+  Rig, Create Demo Scene, Add HexR Panel, Auto Setup Scene, Validate Scene Setup, and one-off
+  Migration commands) and the `HexRToolsWindow` window: Haptics Tester, HexR Setup (scene checklist)
   and Project Setup (backend detection + package installer + docs links).
 - `Samples~/Tutorial Content` — optional tutorial props, imported from Package Manager.
 
@@ -208,7 +212,10 @@ feel, and hit its "Auto Set Up" to wire both Pressure Controllers.
    **HexR > Validate Scene Setup** to confirm hand roots, the Pressure Controllers, the
    fingertip/palm colliders and (on OpenXR) a `ProximityCheck` are all wired correctly.
 6. Optional: **Window > Package Manager > HexR > Samples > Tutorial Content > Import** for
-   the tutorial props (torch, squeezable heart, lightbulb, ball, connect/grab audio).
+   the tutorial props (torch, squeezable heart, lightbulb, ball, connect/grab audio). The
+   sample is props only — there is no scene in it, because a saved scene would have to
+   reference one backend's camera rig and would arrive broken on the other. **HexR > Create
+   Demo Scene** generates one instead, against whichever backend is installed.
 
 ## Updating `HaptGlove.dll`
 
