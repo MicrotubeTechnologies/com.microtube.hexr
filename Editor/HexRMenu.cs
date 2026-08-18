@@ -84,7 +84,7 @@ namespace HexR
         [MenuItem("HexR/Create Demo Scene", false, 3)]
         private static void CreateDemoScene()
         {
-            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsToSave())
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
             {
                 return;
             }
