@@ -810,6 +810,8 @@ namespace HexR
         private const string OpenXRDocsUrl = "https://github.com/MicrotubeTechnologies/HexR-developer-tutorial-XR";
         private const string MetaOVRDocsUrl = "https://github.com/MicrotubeTechnologies/HexR-Developer-Tutorial-Meta-OVR";
         private const string MicrotubeUrl = "https://microtube.tech/hexr-glove/";
+        private const string MetaAssetStoreUrl = "https://assetstore.unity.com/packages/tools/integration/meta-xr-all-in-one-sdk-269657";
+        private const string MetaPackageDocsUrl = "https://developers.meta.com/horizon/documentation/unity/unity-package-manager/";
 
         [SerializeField] private BackendChoice backendChoice = BackendChoice.OpenXR;
         private enum BackendChoice { OpenXR, MetaOVR }
@@ -844,6 +846,8 @@ namespace HexR
             EditorGUILayout.Space(10);
             BackendSpec spec = backendChoice == BackendChoice.OpenXR ? OpenXRBackend : MetaOVRBackend;
             DrawPackageList(spec);
+
+            DrawMetaSdkHelp();
 
             EditorGUILayout.Space(12);
             DrawQuickLinks();
@@ -1019,8 +1023,13 @@ namespace HexR
             {
                 // Carry on rather than abort: one unavailable package (the Meta SDK isn't on the
                 // public registry, for instance) shouldn't block the rest of the queue.
+                string hint = activeAddName != null && activeAddName.StartsWith("com.meta.")
+                    ? "  The Meta XR SDK is not on Unity's registry. Add the free Meta XR All-in-One SDK to your "
+                        + "Unity account from the Asset Store, install it via Package Manager > My Assets, then "
+                        + "press Re-scan in HexR > HexR Tools > Project Setup."
+                    : string.Empty;
                 Debug.LogError("[HexR] Failed to install " + activeAddName + ": "
-                    + (activeAdd.Error != null ? activeAdd.Error.message : "unknown error"));
+                    + (activeAdd.Error != null ? activeAdd.Error.message : "unknown error") + hint);
             }
 
             activeAdd = null;
@@ -1028,6 +1037,41 @@ namespace HexR
             installedPackages = null;
 
             PumpInstallQueue();
+        }
+
+        // Unity's registry does not carry com.meta.xr.sdk.*, so Client.Add can only resolve those
+        // once the Unity account opening this project owns the (free) Asset Store listing. No button
+        // here can do that step on the user's behalf -- so rather than let the install fail with a
+        // bare "package not found", spell the route out and link it.
+        private void DrawMetaSdkHelp()
+        {
+            if (backendChoice != BackendChoice.MetaOVR || IsBackendPresent(MetaOVRBackend))
+            {
+                return;
+            }
+
+            EditorGUILayout.Space(8);
+            SectionHeader("Getting the Meta XR SDK");
+            EditorGUILayout.HelpBox(
+                "Unity's package registry does not carry the Meta XR SDK. Add the free Meta XR All-in-One SDK "
+                + "to your Unity account once, and Package Manager (and the install button above) can resolve "
+                + "it from then on.\n\n"
+                + "1.  Open the Asset Store page below and click \"Add to My Assets\" -- it is free.\n"
+                + "2.  In Unity: Window > Package Manager > My Assets > Meta XR All-in-One SDK > Install.\n"
+                + "3.  Come back here and press Re-scan.",
+                MessageType.Info);
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Open Asset Store page", GUILayout.Height(22)))
+                {
+                    Application.OpenURL(MetaAssetStoreUrl);
+                }
+                if (GUILayout.Button("Meta's setup docs", GUILayout.Height(22)))
+                {
+                    Application.OpenURL(MetaPackageDocsUrl);
+                }
+            }
         }
 
         private void DrawQuickLinks()
