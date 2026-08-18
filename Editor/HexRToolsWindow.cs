@@ -803,6 +803,12 @@ namespace HexR
             new[]
             {
                 "com.meta.xr.sdk.interaction",
+                // The XR provider. Nothing in the Meta SDK depends on it -- checked against a
+                // working Meta project's packages-lock.json, where com.unity.xr.oculus sits at
+                // depth 0 and no com.meta.* package lists it. Without a provider under XR
+                // Plug-in Management the app compiles and then renders to nothing on device,
+                // so it belongs on this list even though it isn't Meta's.
+                "com.unity.xr.oculus",
                 "com.unity.xr.management",
                 "com.unity.textmeshpro"
             });
