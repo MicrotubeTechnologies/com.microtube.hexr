@@ -497,7 +497,7 @@ namespace HexR
 
         private void RunValidation()
         {
-            HexRManager controller = FindObjectOfType<HexRManager>();
+            HexRManager controller = HexRCompat.FindAny<HexRManager>();
             if (controller == null)
             {
                 setupResults = null;
@@ -511,7 +511,7 @@ namespace HexR
 
         private void DrawSetupTab()
         {
-            HexRManager controller = FindObjectOfType<HexRManager>();
+            HexRManager controller = HexRCompat.FindAny<HexRManager>();
             if (controller == null)
             {
                 EditorGUILayout.HelpBox("No HexRManager found in the open scene -- use HexR > Create HexR Rig first, or add the HexR Main prefab manually.", MessageType.Warning);
@@ -678,7 +678,7 @@ namespace HexR
 
         private static PhysicsHandTracking FindTracking(PhysicsHandTracking.HandType handType)
         {
-            PhysicsHandTracking[] all = FindObjectsByType<PhysicsHandTracking>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            PhysicsHandTracking[] all = HexRCompat.FindAll<PhysicsHandTracking>(true);
             foreach (PhysicsHandTracking t in all)
             {
                 if (t.handType == handType)

@@ -54,7 +54,7 @@ namespace HexR
             // HexRPanelConnectButtons finds HexRManager.Instance on its own at runtime
             // regardless of parenting, so this is just a tidy default -- not required for
             // the panel to work.
-            HexRManager controller = Object.FindObjectOfType<HexRManager>();
+            HexRManager controller = HexRCompat.FindAny<HexRManager>();
             if (controller != null)
             {
                 Undo.SetTransformParent(instance.transform, controller.transform, "Add HexR Panel");
@@ -100,7 +100,7 @@ namespace HexR
 
             CreateHexRRig(prefabName, framework);
 
-            HexRManager controller = Object.FindObjectOfType<HexRManager>();
+            HexRManager controller = HexRCompat.FindAny<HexRManager>();
             if (controller == null)
             {
                 Debug.LogError("[HexR] Demo scene: the HexR rig could not be created, so the rest of the scene was skipped. See the error above.");
@@ -211,7 +211,7 @@ namespace HexR
         [MenuItem("HexR/Auto Setup Scene", false, 20)]
         private static void AutoSetupScene()
         {
-            HexRManager controller = Object.FindObjectOfType<HexRManager>();
+            HexRManager controller = HexRCompat.FindAny<HexRManager>();
             if (controller == null)
             {
                 Debug.LogWarning("[HexR] No HexRManager found in the open scene -- use HexR > Create HexR Rig first, or add the HexR Main prefab manually.");
@@ -232,13 +232,13 @@ namespace HexR
         [MenuItem("HexR/Auto Setup Scene", true)]
         private static bool ValidateAutoSetupScene()
         {
-            return Object.FindObjectOfType<HexRManager>() != null;
+            return HexRCompat.FindAny<HexRManager>() != null;
         }
 
         [MenuItem("HexR/Validate Scene Setup", false, 21)]
         private static void ValidateSceneSetup()
         {
-            HexRManager controller = Object.FindObjectOfType<HexRManager>();
+            HexRManager controller = HexRCompat.FindAny<HexRManager>();
             if (controller == null)
             {
                 Debug.LogWarning("[HexR] No HexRManager found in the open scene -- nothing to validate.");
@@ -257,12 +257,12 @@ namespace HexR
         [MenuItem("HexR/Validate Scene Setup", true)]
         private static bool ValidateValidateSceneSetup()
         {
-            return Object.FindObjectOfType<HexRManager>() != null;
+            return HexRCompat.FindAny<HexRManager>() != null;
         }
 
         private static void CreateHexRRig(string prefabName, HexRManager.Options framework)
         {
-            if (Object.FindObjectOfType<HexRManager>() != null)
+            if (HexRCompat.FindAny<HexRManager>() != null)
             {
                 Debug.LogWarning("[HexR] A HexRManager already exists in this scene -- not creating a second HexR Main rig. Delete the existing one first if you want to replace it.");
                 return;
