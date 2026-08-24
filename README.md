@@ -10,6 +10,11 @@ this installs into any Unity 2022.3+ project and you pick the backend afterwards
 
 ### Package Manager (recommended)
 
+> [!IMPORTANT]
+> `com.microtube.hexr` is **not published to a registry**. **Add package by name** will fail
+> with *"Unable to find package"* — the name identifies the package, it is not somewhere to
+> fetch it from. Add it by **git URL**:
+
 **Window → Package Manager → + → Add package from git URL…**, then paste:
 
 ```
