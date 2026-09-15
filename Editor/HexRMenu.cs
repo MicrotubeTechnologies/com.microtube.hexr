@@ -41,7 +41,11 @@ namespace HexR
         // goes in per scene instead, which is what Add Pressure Controller does.
         private const string PressureControllerPrefabPath = PrefabFolder + "Pressure Controller.prefab";
 
-        [MenuItem("HexR/Create HexR Rig/Open XR", false, 0)]
+        // Named for every runtime it covers, because the commonest PICO question is "where is
+        // the PICO rig". There isn't one and there shouldn't be: PICO is OpenXR, so a separate
+        // entry would instantiate this identical prefab with this identical Options value and
+        // imply a PICO-specific rig exists.
+        [MenuItem("HexR/Create HexR Rig/Open XR (Quest, PICO, SteamVR)", false, 0)]
         private static void CreateHexRRigOpenXR() => CreateHexRRig(OpenXRPrefabName, HexRManager.Options.OpenXR);
 
         [MenuItem("HexR/Create HexR Rig/Meta OVR", false, 1)]
@@ -174,6 +178,11 @@ namespace HexR
             // uses one: it answers "can HexR compile against this backend right now", and it
             // stays correct however the SDK arrived.
             bool metaAvailable = IsAssemblyLoaded("Oculus.Interaction");
+            // Only ever affects what the log below says. PICO takes the OpenXR rig, the OpenXR
+            // prefab and Options.OpenXR like any other OpenXR runtime -- naming it here just
+            // saves a PICO user wondering whether the "OpenXR" in the log means it missed them.
+            bool picoAvailable = IsAssemblyLoaded("Unity.XR.OpenXR.Features.PICOSupport");
+            string backendLabel = metaAvailable ? "Meta OVR" : (picoAvailable ? "OpenXR (PICO)" : "OpenXR");
             string prefabName = metaAvailable ? MetaOVRPrefabName : OpenXRPrefabName;
             HexRManager.Options framework = metaAvailable ? HexRManager.Options.MetaOVR : HexRManager.Options.OpenXR;
 
@@ -197,9 +206,12 @@ namespace HexR
             EditorGUIUtility.PingObject(grabbable);
             EditorSceneManager.MarkSceneDirty(controller.gameObject.scene);
 
-            Debug.Log("[HexR] Demo scene created for " + (metaAvailable ? "Meta OVR" : "OpenXR") + ".\n"
+            Debug.Log("[HexR] Demo scene created for " + backendLabel + ".\n"
                 + "Three things are left, because the package cannot ship them for you:\n"
-                + "  1. Add your hand-tracking rig -- Meta Building Blocks' \"Hand Tracking\" block, or an OpenXR rig with com.unity.xr.hands.\n"
+                + "  1. Add your hand-tracking rig -- Meta Building Blocks' \"Hand Tracking\" block, or an OpenXR rig with com.unity.xr.hands."
+                + (picoAvailable && !metaAvailable
+                    ? " On PICO that rig is an ordinary XR Origin with com.unity.xr.hands; the PICO plugin supplies the runtime, not the rig."
+                    : string.Empty) + "\n"
                 + "  2. Run HexR > Auto Setup Scene again so it picks that rig up.\n"
                 + "  3. Run HexR > Validate Scene Setup, save the scene, then press Play.");
         }

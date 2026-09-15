@@ -1193,11 +1193,14 @@ namespace HexR
                 {
                     EditorGUI.indentLevel++;
                     controller.XRFramework = (HexRManager.Options)EditorGUILayout.EnumPopup(
-                        new GUIContent("XR Framework", "Which XR hand-tracking convention this rig uses. Controls how Auto Setup finds the raw hand root, and which joint-naming path it tries (OpenXR joint names, falling back to legacy Meta OVR bone names)."),
+                        new GUIContent("XR Framework", "Which hand-joint naming convention this rig reads -- not which headset it runs on. "
+                            + "OpenXR covers Unity XR Hands on any OpenXR runtime (Quest, PICO, Vive, SteamVR), because they all expose the same L_/R_ joint names. "
+                            + "MetaOVR is for Meta's own Interaction SDK skeleton. There is deliberately no PICO option: PICO is OpenXR."),
                         controller.XRFramework);
 
                     controller.isQuest = EditorGUILayout.Toggle(
-                        new GUIContent("Quest Headset", "Whether this build runs standalone on a Quest headset -- toggles Quest-specific behavior in both hands' HaptGloveHandler."),
+                        new GUIContent("Quest BLE Buffering", "Forwarded to both hands' HaptGloveHandler at Start, where it selects a Bluetooth write-buffering strategy inside HaptGlove.dll. "
+                            + "Correct for Quest, and on by default on both shipped rigs. UNTESTED on PICO: if a PICO build pairs with the glove but no haptics arrive, this is the first thing to turn off."),
                         controller.isQuest);
 
                     GUILayout.Space(4);
