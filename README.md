@@ -4,7 +4,9 @@ HexR haptic glove integration for Unity: hand-tracking-driven finger/palm haptic
 detection, and preset effects.
 
 Runs on **either OpenXR or the Meta Interaction SDK** — neither is a hard dependency, so
-this installs into any Unity 2022.3+ project and you pick the backend afterwards.
+this installs into any Unity 2022.3+ project and you pick the backend afterwards. The OpenXR
+path is device-agnostic: Quest, PICO, Vive and anything else exposing Unity XR Hands all use
+the same rig and the same settings.
 
 ## Installing
 
@@ -32,7 +34,7 @@ Or add it to `Packages/manifest.json` directly:
 ```
 
 Pinning is optional: `main` is kept releasable, so the unpinned URL above always resolves
-the latest release. Append a tag (`#v0.4.0`) when a build has to stay reproducible.
+the latest release. Append a tag (`#v0.5.0`) when a build has to stay reproducible.
 
 Either way, UPM caches a git dependency by the ref it resolved, so an unpinned URL does not
 re-check on its own. To pull a newer `main`, use **Window → Package Manager →
@@ -54,7 +56,7 @@ form does not give you (UPM installs those read-only under `Library/PackageCache
 
 ### After installing
 
-1. **HexR → HexR Tools → Project Setup** — pick OpenXR or Meta OVR and install whatever it
+1. **HexR → HexR Tools → Project Setup** — pick OpenXR, Meta OVR or PICO and install whatever it
    reports missing. Nothing pulls either backend in automatically; that is the deliberate
    cost of the package not hard-depending on either.
 2. Set up a hand-tracking camera rig in your scene (Meta Building Blocks' "Hand Tracking"
@@ -188,12 +190,52 @@ Everything that needs `Oculus.Interaction` lives in a second assembly,
   still accepts it — widening does, relocating the field to another component does not.
   `MetaOVRHandNearSource` casts them and polls `HasInteractable`.
 
+### PICO
+
+**PICO is not a third backend.** It is OpenXR plus a vendor OpenXR plugin, so it uses the
+OpenXR rig, the `HexR Main (Open XR)` prefab and `XRFramework = OpenXR` exactly like any
+other OpenXR runtime. There is no PICO setting anywhere in HexR, and there shouldn't be.
+
+Use **HexR → Create HexR Rig → Open XR (Quest, PICO, SteamVR)** and leave `XR Framework` on
+`OpenXR`.
+
+**Why it just works.** `PhysicsHandTracking.OpenXRStart` resolves joints by the Unity XR
+Hands names — `L_ThumbMetacarpal`, `L_IndexTip`, … `L_Palm` — and `AutoSetup` finds the hand
+roots as `Left`/`Right Hand Interaction Visual` → `L_Wrist`/`R_Wrist`. PICO's hand-tracking
+subsystem produces exactly those names, because they come from `com.unity.xr.hands` rather
+than from the vendor. Nothing in this package names a headset.
+
+**Getting the plugin.** `com.unity.xr.openxr.picoxr` is a zip from
+[PICO's developer downloads](https://developer.picoxr.com/resources/), unpacked so that the
+folder holding its `package.json` sits directly under `Packages/`. It is on no registry, so
+Project Setup can detect it and link to it but cannot install it. Verified against v1.4.1,
+whose assemblies are `Unity.XR.OpenXR.Features.PICOSupport`, `Unity.XR.OpenXRPico`,
+`PICO.Platform` and `PICO.TobSupport`.
+
+> [!IMPORTANT]
+> This is **not** the legacy PICO Unity Integration SDK (the PXR one, assembly
+> `Unity.XR.PICO`). That brings its own XR loader instead of `OpenXRLoader`, and HexR's
+> OpenXR path does not support it.
+
+**Project settings.** OpenXR as the plug-in provider under XR Plug-in Management → Android;
+"PICO OpenXR Features" and the hand-tracking feature ticked under OpenXR → Android; ARM64
+and IL2CPP in Player Settings.
+
+**`Quest BLE Buffering` (`isQuest`) is untested on PICO.** It ships **on**, which is the
+default on both rigs, and nothing is known to be wrong with it there — but it selects a
+Bluetooth write-buffering strategy inside the closed-source `HaptGlove.dll` and has only
+ever been exercised on Quest. *If a PICO build pairs with the glove but no haptics arrive,
+turn it off first.*
+
+**The `ProximityCheck` requirement applies in full** — PICO sits in the OpenXR column of the
+table below, so a scene without one never fires haptics at all.
+
 ## Hand-near gating differs by backend
 
 Haptics only fire when `PressureTrackerMain.IsHandNear()` is true (unless the call passes
 `ByPassHandCheck`). It ORs three flags, and the backends do **not** feed it equally:
 
-| Flag | Set by | Meta OVR | OpenXR |
+| Flag | Set by | Meta OVR | OpenXR (incl. PICO) |
 | --- | --- | --- | --- |
 | `HandGrabbing` | `MetaOVRHandNearSource` ← `HandGrabInteractor.HasInteractable` | ✅ | ❌ |
 | `PokeHovering` | `MetaOVRHandNearSource` ← `PokeInteractor.HasInteractable` | ✅ | ❌ |
@@ -259,6 +301,28 @@ unmodified on another machine — expect to fix those `HintPath`s locally. That 
 blocker on rebuilding either DLL, so it has to be cleared first.
 
 ## Known gaps (found while assembling this package — not yet resolved)
+
+- **`isQuest` has never been tested on PICO.** It ships on, and it selects a BLE
+  write-buffering strategy inside `HaptGlove.dll` (`questBleBuffer`), so what it does on
+  PICO's Bluetooth stack is genuinely unknown. First thing to toggle if a PICO build pairs
+  but stays silent. See [PICO](#pico).
+
+- **`HaptGloveHandler.BuildPlatform` is not understood.** It is a `TargetPlatform` enum whose
+  members appear to be `{ Window, Android }` — there is no `Quest` and no `Pico` — and every
+  shipped prefab and tutorial scene serialises `0`. Whether the DLL overrides it from
+  `Application.platform` at runtime is unconfirmed; it must, since Android builds work. Needs
+  an ILSpy pass on `HaptGlove.dll` to settle.
+
+- **`targetDeviceName` may be cosmetic.** Until v0.5.0 both hands on the OpenXR rig read
+  `HaptGloveAR Right`, and the tutorial repo's Full Demo scene still does. That nobody
+  noticed suggests the DLL derives the name from `whichHand` instead — its string heap puts
+  `"Invalid hand name: "`, `"HaptGloveAR Left"` and `"HaptGloveAR Right"` next to the scan
+  strings, and `setDeviceName` next to `targetDeviceName`. Same ILSpy pass.
+
+- **`ArduinoBluetoothAPILocal.dll.meta` still carries `Android: CPU: ARMv7`.** Harmless — the
+  CPU setting is ignored for a managed assembly, and `Any: enabled: 1` governs — so it was
+  left alone rather than risk dropping the assembly from a build for no gain. The same
+  setting *was* removed from `hexrbluetooth.androidlib`, where it was not harmless.
 
 - **`HaptGlove.dll` and `ArduinoBluetoothAPILocal.dll` are `Debug` builds.** Both were built
   in the Debug configuration and shipped as-is, so the package's entire BLE and haptics
