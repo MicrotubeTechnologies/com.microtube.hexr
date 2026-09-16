@@ -34,7 +34,7 @@ Or add it to `Packages/manifest.json` directly:
 ```
 
 Pinning is optional: `main` is kept releasable, so the unpinned URL above always resolves
-the latest release. Append a tag (`#v0.5.0`) when a build has to stay reproducible.
+the latest release. Append a tag (`#v0.5.1`) when a build has to stay reproducible.
 
 Either way, UPM caches a git dependency by the ref it resolved, so an unpinned URL does not
 re-check on its own. To pull a newer `main`, use **Window → Package Manager →
