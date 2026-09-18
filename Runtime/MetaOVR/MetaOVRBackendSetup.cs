@@ -36,7 +36,7 @@ namespace HexR.MetaOVR
 
         private static void Wire(PressureTrackerMain tracker, Transform handRoot, string label)
         {
-            if (tracker == null)
+            if (tracker == null || !IsMetaRig(tracker))
             {
                 return;
             }
@@ -55,6 +55,25 @@ namespace HexR.MetaOVR
         {
             MetaOVRHandNearSource source = tracker.GetComponent<MetaOVRHandNearSource>();
             return source != null ? source : tracker.gameObject.AddComponent<MetaOVRHandNearSource>();
+        }
+
+        /// <summary>
+        /// Whether this Pressure Controller belongs to a Meta OVR rig.
+        ///
+        /// AutoSetup now invokes the backend hook for either framework, so this has to answer for
+        /// itself rather than relying on the caller having filtered. Only matters in a project
+        /// with both the Meta SDK and XRI installed, where both backend assemblies compile and
+        /// both subscribe to the same hook.
+        /// </summary>
+        private static bool IsMetaRig(PressureTrackerMain tracker)
+        {
+            HexRManager manager = tracker.GetComponentInParent<HexRManager>();
+            if (manager == null)
+            {
+                manager = HexRManager.Instance;
+            }
+
+            return manager != null && manager.XRFramework == HexRManager.Options.MetaOVR;
         }
 
         // Scenes authored before the assembly split have their interactors wired on the tracker

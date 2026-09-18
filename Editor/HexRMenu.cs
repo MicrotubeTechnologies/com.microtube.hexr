@@ -579,5 +579,92 @@ namespace HexR
             }
             return null;
         }
+
+        // ---------------------------------------------------------------------------------
+        // HaptGlove.dll -> source migration
+        // ---------------------------------------------------------------------------------
+        //
+        // The HaptGlove runtime used to ship as a precompiled HaptGlove.dll. A MonoBehaviour
+        // living in a managed plugin is referenced by (the DLL's GUID, a fileID derived from
+        // the type), where a MonoBehaviour from a .cs file is referenced by (the .cs meta's
+        // GUID, the constant 11500000). Those forms are not interchangeable, so every scene
+        // and prefab that carried a HaptGloveHandler from the DLL points at an asset that no
+        // longer exists, and Unity shows "the associated script can not be loaded" with the
+        // component's serialised values still on disk but unreachable.
+        //
+        // The rig prefabs inside this package were remapped when the runtime was converted.
+        // A consuming project's own scenes were not -- this fixes those. It is a plain text
+        // substitution on the YAML rather than an object-model edit, because a missing script
+        // cannot be resolved through the object model: GetComponent returns null for it, so
+        // there is nothing to reassign m_Script on.
+        private const string LegacyHaptGloveDllGuid = "dffea59c290622e438fc4f11872007ec";
+        private const string LegacyHaptGloveHandlerFileId = "-1140640302";
+        private const string HaptGloveHandlerScriptGuid = "31d314e6cfab95f44b0183e301ce3bd7";
+
+        [MenuItem("HexR/Migration/Repoint HaptGlove Scripts To Source", false, 42)]
+        private static void RepointHaptGloveScriptsToSource()
+        {
+            string legacy = $"m_Script: {{fileID: {LegacyHaptGloveHandlerFileId}, guid: {LegacyHaptGloveDllGuid}, type: 3}}";
+            string replacement = $"m_Script: {{fileID: 11500000, guid: {HaptGloveHandlerScriptGuid}, type: 3}}";
+
+            // Serialised assets only, and only under Assets/ -- a package folder is not ours
+            // to rewrite, and Library/ is regenerated.
+            string[] guids = AssetDatabase.FindAssets("t:Scene t:Prefab", new[] { "Assets" });
+            int filesChanged = 0;
+            int referencesChanged = 0;
+
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                string full = Path.GetFullPath(path);
+                if (!File.Exists(full))
+                {
+                    continue;
+                }
+
+                string text;
+                try
+                {
+                    text = File.ReadAllText(full);
+                }
+                catch (IOException e)
+                {
+                    Debug.LogWarning($"[HexR] Migration: could not read \"{path}\" -- skipping. {e.Message}");
+                    continue;
+                }
+
+                if (text.IndexOf(legacy, System.StringComparison.Ordinal) < 0)
+                {
+                    continue;
+                }
+
+                // A YAML asset saved in binary or text-with-force-text both read as text here;
+                // if it isn't text the substring simply won't match and we skip it above.
+                int occurrences = 0;
+                int scan = 0;
+                while ((scan = text.IndexOf(legacy, scan, System.StringComparison.Ordinal)) >= 0)
+                {
+                    occurrences++;
+                    scan += legacy.Length;
+                }
+
+                File.WriteAllText(full, text.Replace(legacy, replacement));
+                filesChanged++;
+                referencesChanged += occurrences;
+                Debug.Log($"[HexR] Migration: repointed {occurrences} HaptGloveHandler reference(s) in \"{path}\".");
+            }
+
+            if (filesChanged == 0)
+            {
+                Debug.Log("[HexR] Migration: no scene or prefab under Assets/ referenced the old "
+                    + "HaptGlove.dll HaptGloveHandler -- nothing to do.");
+                return;
+            }
+
+            AssetDatabase.Refresh();
+            Debug.Log($"[HexR] Migration: repointed {referencesChanged} reference(s) across {filesChanged} "
+                + "asset(s) from HaptGlove.dll to the in-package HaptGlove source. The components keep "
+                + "their serialised values. Review the change (e.g. git diff) before committing.");
+        }
     }
 }

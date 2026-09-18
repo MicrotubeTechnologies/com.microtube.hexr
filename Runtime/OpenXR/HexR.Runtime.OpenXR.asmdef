@@ -1,0 +1,27 @@
+{
+  "name": "HexR.Runtime.OpenXR",
+  "rootNamespace": "HexR.OpenXR",
+  "references": [
+    "HexR.Runtime",
+    "Unity.XR.Interaction.Toolkit",
+    "Unity.XR.CoreUtils",
+    "Unity.InputSystem"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "HEXR_XRI"
+  ],
+  "versionDefines": [
+    {
+      "name": "com.unity.xr.interaction.toolkit",
+      "expression": "",
+      "define": "HEXR_XRI"
+    }
+  ],
+  "noEngineReferences": false
+}
