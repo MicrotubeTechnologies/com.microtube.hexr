@@ -1076,6 +1076,14 @@ public class HexRFloatingMenu : MonoBehaviour
         // Local units here are panel pixels; the canvas scale converts them to metres.
         box.size = new Vector3(width, height, k_PressDepthPx);
 
+        // Offset to the middle of the button, because a RectTransform's local origin is its pivot
+        // and Place gives every button a top-left pivot. A collider left at the default centre is
+        // therefore centred on the button's top-left CORNER: three quarters of it hangs off the
+        // button into empty space, and only the button's top-left quarter is pressable. Pressing
+        // one anywhere near the middle -- where the label is, and where anyone would press --
+        // touches nothing at all. y is negative because Place runs y downward.
+        box.center = new Vector3(width * 0.5f, -height * 0.5f, 0f);
+
         HexRPhysicalButton press = image.gameObject.AddComponent<HexRPhysicalButton>();
 
         // No cap travel: the visual feedback is the colour tint below. Travel is expressed in
