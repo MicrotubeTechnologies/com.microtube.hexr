@@ -844,7 +844,7 @@ namespace HexR
             },
             new[] { "com.unity.xr.openxr.picoxr" });
 
-        private const string OpenXRDocsUrl = "https://github.com/MicrotubeTechnologies/HexR-developer-tutorial-XR";
+        private const string OpenXRDocsUrl = "https://github.com/MicrotubeTechnologies/HexR-Developer-Tutorial-Pico";
         private const string MetaOVRDocsUrl = "https://github.com/MicrotubeTechnologies/HexR-Developer-Tutorial-Meta-OVR";
         private const string MicrotubeUrl = "https://microtube.tech/hexr-glove/";
         private const string MetaAssetStoreUrl = "https://assetstore.unity.com/packages/tools/integration/meta-xr-all-in-one-sdk-269657";
