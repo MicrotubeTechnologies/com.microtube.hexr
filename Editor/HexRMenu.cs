@@ -62,6 +62,13 @@ namespace HexR
 
             GameObject instance = new GameObject("HexR Floating Menu");
             HexRFloatingMenu menu = instance.AddComponent<HexRFloatingMenu>();
+
+            // A panel added to someone's own project gets the gloves and the colliders, and stops
+            // there. The SCENES and DEMOS sections exist to walk through our two tutorials; in a
+            // project that is not one of them they would list that project's own scenes as though
+            // the panel knew something about them, which it does not.
+            menu.showDemoSections = false;
+
             Undo.RegisterCreatedObjectUndo(instance, "Add Menu");
 
             // Tidy default only -- the menu finds HexRManager itself at runtime whatever its parent.
@@ -76,7 +83,8 @@ namespace HexR
             Selection.activeGameObject = instance;
             EditorGUIUtility.PingObject(instance);
             EditorSceneManager.MarkSceneDirty(instance.scene);
-            Debug.Log("[HexR] Added the HexR menu to the scene.");
+            Debug.Log("[HexR] Added the HexR menu to the scene -- glove connection and collider "
+                + "display. Tick Show Demo Sections on it to add the scene and demo switchers.");
         }
 
         // The panel does not place itself at runtime -- it stays exactly where the scene puts it --

@@ -20,10 +20,24 @@ namespace HexR.MetaOVR
         [Tooltip("Leave empty -- found automatically. Set it only when a scene has more than one.")]
         public OVRPassthroughLayer layer;
 
+        [Tooltip("Start the scene in passthrough. Untick to start in VR.")]
+        public bool startInPassthrough = true;
+
         private Camera cam;
         private CameraClearFlags savedFlags;
         private Color savedBackground;
         private bool saved;
+
+        // The mirror of the PICO component's Start, so both demos come up in passthrough with no
+        // button to press. Start rather than Awake: Resolve needs the OVRPassthroughLayer and
+        // ApplyCamera needs Camera.main, and neither is reliably there the frame a rig awakes.
+        private void Start()
+        {
+            if (startInPassthrough)
+            {
+                SetPassthrough(true);
+            }
+        }
 
         public bool IsAvailable
         {

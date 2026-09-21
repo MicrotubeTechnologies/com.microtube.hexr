@@ -71,9 +71,25 @@ namespace HexR
 
         private void Awake()
         {
-            CaptureRest();
+            if (cap == null)
+            {
+                cap = transform;
+            }
         }
 
+        /// <summary>
+        /// Records where the cap sits, at the moment it is about to move.
+        ///
+        /// Deliberately not done in Awake. A button on a Canvas has no settled position until
+        /// layout has run, and the menu adds this component while it is still building the panel
+        /// -- the panel's width is set after the last button exists. A rest position captured in
+        /// Awake was therefore taken while the parent was still zero-wide, and since both the
+        /// press and the release write it back, the first press teleported the button to where it
+        /// had been mid-build: 180px, about 16cm, to the right, and it stayed there.
+        ///
+        /// Capturing per press also means a button that is legitimately moved or re-laid-out
+        /// between presses returns to where it actually was, rather than where it once was.
+        /// </summary>
         private void CaptureRest()
         {
             if (cap == null)
@@ -81,11 +97,8 @@ namespace HexR
                 cap = transform;
             }
 
-            if (!capCaptured)
-            {
-                capRestPosition = cap.localPosition;
-                capCaptured = true;
-            }
+            capRestPosition = cap.localPosition;
+            capCaptured = true;
         }
 
         private void OnEnable()
@@ -113,9 +126,17 @@ namespace HexR
                 return;
             }
 
-            CaptureRest();
             presser = trigger;
-            cap.localPosition = capRestPosition + pressDirection.normalized * travel;
+
+            // Only touch the transform if there is actually travel to apply. The menu's buttons
+            // ask for none -- they show the press as a colour change, because travel is in metres
+            // and those live in a scaled canvas where any sane metre value would throw them off
+            // the panel -- so for them this must be a no-op, not a write of the same value back.
+            if (travel > 0f)
+            {
+                CaptureRest();
+                cap.localPosition = capRestPosition + pressDirection.normalized * travel;
+            }
 
             // The action first, the feel second. These used to run the other way round, and a
             // throw inside the haptics -- which is what an unpaired glove produced -- unwound out
@@ -152,6 +173,7 @@ namespace HexR
             if (capCaptured && cap != null)
             {
                 cap.localPosition = capRestPosition;
+                capCaptured = false;
             }
         }
 

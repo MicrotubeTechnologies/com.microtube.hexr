@@ -64,6 +64,12 @@ public class HexRFloatingMenu : MonoBehaviour
     public float panelWidth = 0.32f;
 
     [Header("Behaviour")]
+    [Tooltip("Show the SCENES and DEMOS sections. On for the tutorial demos, which is what those " +
+             "sections are for. HexR > Add HexR Menu turns it off, because a panel dropped into " +
+             "someone's own project wants the gloves and the colliders and nothing else -- their " +
+             "scenes are not our demos.")]
+    public bool showDemoSections = true;
+
     [Tooltip("Switch the old wrist menu off. Untick to run both while comparing them.")]
     public bool hideHandMenu = true;
 
@@ -95,9 +101,7 @@ public class HexRFloatingMenu : MonoBehaviour
     private const float k_PressDepthPx = 30f;
     private const float k_GridButtonHeight = 42f;
     private const float k_GridGap = 12f;
-    private const float k_StatusHeight = 20f;
     private const float k_Gap = 16f;
-    private const float k_DotSize = 12f;
 
     private static readonly Color k_Background = new Color32(0x15, 0x18, 0x1E, 0xF5);
     private static readonly Color k_Header = new Color32(0x2D, 0x35, 0x42, 0xFF);
@@ -106,8 +110,6 @@ public class HexRFloatingMenu : MonoBehaviour
     private static readonly Color k_ButtonHighlight = new Color32(0x3B, 0x47, 0x59, 0xFF);
     private static readonly Color k_ButtonPressed = new Color32(0x4D, 0x5D, 0x74, 0xFF);
     private static readonly Color k_Accent = new Color32(0x1E, 0x6F, 0xEB, 0xFF);
-    private static readonly Color k_Connected = new Color32(0x3D, 0xDC, 0x84, 0xFF);
-    private static readonly Color k_Pump = new Color32(0xFF, 0xB0, 0x20, 0xFF);
     private static readonly Color k_Text = new Color32(0xF0, 0xF3, 0xF7, 0xFF);
     private static readonly Color k_TextDim = new Color32(0x9A, 0xA4, 0xB4, 0xFF);
     private static readonly Color k_Warn = new Color32(0xFF, 0x7A, 0x6B, 0xFF);
@@ -116,11 +118,6 @@ public class HexRFloatingMenu : MonoBehaviour
     private Canvas canvas;
     private TextMeshProUGUI leftStatus;
     private TextMeshProUGUI rightStatus;
-    private GameObject leftConnectedDot;
-    private GameObject rightConnectedDot;
-    private GameObject leftPumpDot;
-    private GameObject rightPumpDot;
-    private TextMeshProUGUI passthroughLabel;
     private TextMeshProUGUI collidersLabel;
     private IHexRPassthrough passthrough;
 
@@ -128,6 +125,8 @@ public class HexRFloatingMenu : MonoBehaviour
     // load and the section disappears in the scenes that have none.
     private readonly List<GameObject> demoGroups = new List<GameObject>();
     private readonly List<Button> demoButtons = new List<Button>();
+    private readonly List<Button> sceneButtons = new List<Button>();
+    private readonly List<Image> sceneButtonImages = new List<Image>();
     private readonly List<Image> demoButtonImages = new List<Image>();
 
     private float pixelsToMetres;
@@ -359,10 +358,6 @@ public class HexRFloatingMenu : MonoBehaviour
 
         manager.LeftBtText = leftStatus;
         manager.RightBtText = rightStatus;
-        manager.BluetoothIndicatorL = leftConnectedDot;
-        manager.BluetoothIndicatorR = rightConnectedDot;
-        manager.pumpIndicator_L = leftPumpDot;
-        manager.pumpIndicator_R = rightPumpDot;
 
         // The manager shows this on a failed or dropped connection so the user can retry. The
         // panel is always visible, so the call is a no-op -- the point is that it is no longer a
@@ -405,13 +400,14 @@ public class HexRFloatingMenu : MonoBehaviour
             }
         }
 
-        // It rides on the HexR rig, which survives scene loads, while the camera it dims does not.
+        // It rides on the HexR rig, which survives scene loads, while the camera it dims does
+        // not. There is no passthrough button any more -- both demos simply start in passthrough,
+        // which each backend's component does for itself -- but this call is still needed, because
+        // a mode that survives the load with a destroyed camera comes back as a black void.
         if (passthrough != null)
         {
             passthrough.RefreshCamera();
         }
-
-        RefreshPassthroughLabel();
     }
 
     /// <summary>
@@ -456,13 +452,7 @@ public class HexRFloatingMenu : MonoBehaviour
     {
         bool left = hand == HaptGlove.HaptGloveHandler.HandType.Left;
 
-        // Both are null between ClearPanel() and Build() on a scene load.
-        GameObject dot = left ? leftConnectedDot : rightConnectedDot;
-        if (dot != null)
-        {
-            dot.SetActive(false);
-        }
-
+        // Null between ClearPanel() and Build() on a scene load.
         TextMeshProUGUI status = left ? leftStatus : rightStatus;
         if (status != null)
         {
@@ -506,41 +496,6 @@ public class HexRFloatingMenu : MonoBehaviour
         manager.ConnectRightBT();
     }
 
-    private void TogglePassthrough()
-    {
-        if (passthrough == null)
-        {
-            BindPassthrough();
-        }
-
-        if (passthrough != null)
-        {
-            passthrough.Toggle();
-        }
-
-        RefreshPassthroughLabel();
-    }
-
-    private void RefreshPassthroughLabel()
-    {
-        if (passthroughLabel == null)
-        {
-            return;
-        }
-
-        if (passthrough == null || !passthrough.IsAvailable)
-        {
-            // Honest rather than broken-looking: in the editor, and on any runtime without the
-            // extension, there is no camera feed to show and the button genuinely does nothing.
-            passthroughLabel.text = "Passthrough  -  headset only";
-            passthroughLabel.color = k_TextDim;
-            return;
-        }
-
-        bool on = passthrough != null && passthrough.IsOn;
-        passthroughLabel.text = on ? "Switch to VR" : "Switch to Passthrough";
-        passthroughLabel.color = k_Text;
-    }
 
     /// <summary>
     /// Draw or hide the glove's finger and palm colliders.
@@ -651,6 +606,7 @@ public class HexRFloatingMenu : MonoBehaviour
         y = BuildHeader(y);
         y = BuildGloveSection(y);
         y = BuildViewSection(y);
+        y = BuildSceneSection(y);
         y = BuildDemoSection(y);
 
         float height = -y + k_Margin;
@@ -677,46 +633,113 @@ public class HexRFloatingMenu : MonoBehaviour
     {
         y = SectionLabel("GLOVES", y);
 
-        y = GloveRow(y, "Connect Left Glove", ConnectLeft, out leftStatus, out leftConnectedDot, out leftPumpDot);
-        y = GloveRow(y, "Connect Right Glove", ConnectRight, out rightStatus, out rightConnectedDot, out rightPumpDot);
+        y = GloveRow(y, "Connect Left Glove", ConnectLeft, out leftStatus);
+        y = GloveRow(y, "Connect Right Glove", ConnectRight, out rightStatus);
 
         return y;
     }
 
+    /// <summary>
+    /// One glove, one button, and the button says what the glove is doing.
+    ///
+    /// This used to be a button with a small status line and two coloured dots underneath it.
+    /// The dots are gone and the status has moved onto the button face: at arm's length in a
+    /// headset, 13px of grey text is not readable and a 12px dot carries no meaning without a
+    /// legend, while the button itself is already the thing you are looking at. HexRManager
+    /// writes straight into this label, so "Left connected" appears where the press happened.
+    /// </summary>
     private float GloveRow(float y, string label, UnityEngine.Events.UnityAction onClick,
-        out TextMeshProUGUI status, out GameObject connectedDot, out GameObject pumpDot)
+        out TextMeshProUGUI status)
     {
-        NewButton(label, y, k_ButtonHeight, k_ButtonNormal, onClick, out _);
-        y -= k_ButtonHeight + 2f;
+        NewButton(label, y, k_ButtonHeight, k_ButtonNormal, onClick, out status);
 
-        // Two dots at the right of the status line, driven by HexRManager: connection on the
-        // outside, pump next to it. They start off, which is the honest state before a connect.
-        float dotY = y - (k_StatusHeight - k_DotSize) * 0.5f;
-        connectedDot = NewDot("Connected", k_PanelWidthPx - k_Margin - k_DotSize, dotY, k_Connected);
-        pumpDot = NewDot("Pump", k_PanelWidthPx - k_Margin - k_DotSize * 2f - 5f, dotY, k_Pump);
-
-        status = NewLabel("Status", panel, "Not connected", 13f, FontStyles.Normal, k_TextDim,
-            TextAlignmentOptions.Left);
-        Place(status.rectTransform, k_Margin, y, k_PanelWidthPx - k_Margin * 2f - k_DotSize * 2f - 10f,
-            k_StatusHeight);
-
-        return y - k_StatusHeight - k_Gap;
+        return y - k_ButtonHeight - k_Gap;
     }
 
     private float BuildViewSection(float y)
     {
         y = SectionLabel("VIEW", y);
 
-        NewButton("Switch to Passthrough", y, k_ButtonHeight, k_ButtonNormal, TogglePassthrough,
-            out passthroughLabel);
-        RefreshPassthroughLabel();
-        y -= k_ButtonHeight + 2f;
-
         NewButton("Show Colliders", y, k_ButtonHeight, k_ButtonNormal, ToggleColliders,
             out collidersLabel);
         RefreshCollidersLabel();
 
         return y - k_ButtonHeight - k_Gap;
+    }
+
+    /// <summary>
+    /// One button per scene in Build Settings, for walking through the tutorial in a built app.
+    ///
+    /// Built from Build Settings rather than a list in the inspector so it cannot fall out of step
+    /// with what actually shipped, and so neither demo project needs the list maintained twice.
+    /// The panel rides the rig across the load and rebuilds itself on the other side, which is
+    /// what makes this the one control that has to survive a scene change.
+    /// </summary>
+    private float BuildSceneSection(float y)
+    {
+        if (!showDemoSections)
+        {
+            return y;
+        }
+
+        int count = SceneManager.sceneCountInBuildSettings;
+        if (count < 2)
+        {
+            // One scene, or a scene opened straight from the Project window with none in Build
+            // Settings: there is nowhere to go, and a section saying so is worse than no section.
+            return y;
+        }
+
+        y = SectionLabel("SCENES", y);
+
+        int current = SceneManager.GetActiveScene().buildIndex;
+        sceneButtons.Clear();
+        sceneButtonImages.Clear();
+
+        for (int i = 0; i < count; i++)
+        {
+            int index = i;
+            float x, cellY, width;
+            GridCell(i, y, out x, out cellY, out width);
+
+            Button button = NewButtonAt(SceneDisplayName(index), x, cellY, width,
+                k_GridButtonHeight, index == current ? k_Accent : k_ButtonNormal, 12f,
+                () => LoadSceneAt(index), out _);
+
+            // The scene you are already in is not somewhere to go.
+            button.interactable = index != current;
+
+            sceneButtons.Add(button);
+            sceneButtonImages.Add(button.GetComponent<Image>());
+        }
+
+        return y - GridHeight(count) - k_Gap;
+    }
+
+    /// <summary>"Assets/Scenes/2.Hospital Tutorial.unity" reads as "2.Hospital Tutorial".</summary>
+    private static string SceneDisplayName(int buildIndex)
+    {
+        string path = SceneUtility.GetScenePathByBuildIndex(buildIndex);
+        if (string.IsNullOrEmpty(path))
+        {
+            return "Scene " + buildIndex;
+        }
+
+        int slash = path.LastIndexOf('/');
+        int dot = path.LastIndexOf('.');
+        int start = slash + 1;
+        int length = (dot > start ? dot : path.Length) - start;
+        return path.Substring(start, length);
+    }
+
+    private void LoadSceneAt(int buildIndex)
+    {
+        if (buildIndex == SceneManager.GetActiveScene().buildIndex)
+        {
+            return;
+        }
+
+        SceneManager.LoadScene(buildIndex);
     }
 
     /// <summary>
@@ -730,6 +753,11 @@ public class HexRFloatingMenu : MonoBehaviour
     /// </summary>
     private float BuildDemoSection(float y)
     {
+        if (!showDemoSections)
+        {
+            return y;
+        }
+
         demoGroups.Clear();
         FindDemoGroups(demoGroups);
 
@@ -892,15 +920,12 @@ public class HexRFloatingMenu : MonoBehaviour
         canvas = null;
         leftStatus = null;
         rightStatus = null;
-        leftConnectedDot = null;
-        rightConnectedDot = null;
-        leftPumpDot = null;
-        rightPumpDot = null;
-        passthroughLabel = null;
         collidersLabel = null;
         demoGroups.Clear();
         demoButtons.Clear();
         demoButtonImages.Clear();
+        sceneButtons.Clear();
+        sceneButtonImages.Clear();
     }
 
 #if UNITY_EDITOR
@@ -1108,13 +1133,6 @@ public class HexRFloatingMenu : MonoBehaviour
             1f);
     }
 
-    private GameObject NewDot(string name, float x, float y, Color color)
-    {
-        Image dot = NewImage(name, panel, color);
-        Place(dot.rectTransform, x, y, k_DotSize, k_DotSize);
-        dot.gameObject.SetActive(false);
-        return dot.gameObject;
-    }
 
     private static Image NewImage(string name, Transform parent, Color color)
     {
