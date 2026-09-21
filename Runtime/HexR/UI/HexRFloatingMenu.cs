@@ -52,7 +52,8 @@ public class HexRFloatingMenu : MonoBehaviour
     public float spawnSideOffset = -0.35f;
 
     [Tooltip("If the panel ends up further than this from the head it comes back in front of you, " +
-             "so it cannot be pushed somewhere unreachable. Zero disables the recall.")]
+             "so it cannot be pushed somewhere unreachable. Zero disables the recall, and so does " +
+             "unticking Recenter On Start -- a panel you placed by hand stays where you put it.")]
     public float recallDistance = 4f;
 
     [Header("Panel")]
@@ -312,7 +313,12 @@ public class HexRFloatingMenu : MonoBehaviour
             return;
         }
 
-        if (recallDistance > 0f
+        // Only patrol for a lost panel if the panel places itself in the first place. With
+        // recenterOnStart off the position is authored -- someone chose that spot -- and a recall
+        // would quietly move it the moment the user stood more than recallDistance away, which on
+        // a fixed panel is a normal thing to do rather than a sign it has been lost.
+        if (recenterOnStart
+            && recallDistance > 0f
             && Vector3.Distance(transform.position, head.position) > recallDistance)
         {
             Recenter();
