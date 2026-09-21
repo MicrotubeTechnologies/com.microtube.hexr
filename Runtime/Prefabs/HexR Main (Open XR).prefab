@@ -2280,7 +2280,6 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 0}
   - component: {fileID: 5057146893287251632}
   - component: {fileID: 7107754503915560561}
   - component: {fileID: 1887150009251979253}
@@ -3000,7 +2999,6 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 0}
   - component: {fileID: 2771637997441433014}
   - component: {fileID: 2951167345236164973}
   - component: {fileID: 2999688871177861279}

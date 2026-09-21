@@ -26,8 +26,12 @@ namespace HexR
     public class HexRPhysicalButton : MonoBehaviour
     {
         [Header("What it does")]
-        public UnityEvent onPressed;
-        public UnityEvent onReleased;
+        // Constructed here, not just declared. Unity builds serialised UnityEvent fields when it
+        // deserialises a component from a scene or prefab, but a component added at runtime with
+        // AddComponent gets none of that -- the field is simply null, and the first AddListener
+        // throws. The menu builds all of its buttons that way.
+        public UnityEvent onPressed = new UnityEvent();
+        public UnityEvent onReleased = new UnityEvent();
 
         [Header("Which fingers can press it")]
         [Tooltip("An index-only button is the predictable one -- a palm or a curled ring finger " +
