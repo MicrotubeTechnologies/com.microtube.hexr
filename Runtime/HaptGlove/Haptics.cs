@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -10,67 +10,6 @@ namespace HaptGlove
     public class Haptics
     {
         public string whichHand;
-        public static string GetGhostFingerName(byte buf)
-        {
-            switch (buf)
-            {
-                case 0:
-                    return "GhostThumb";
-                case 1:
-                    return "GhostIndex";
-                case 2:
-                    return "GhostMiddle";
-                case 3:
-                    return "GhostRing";
-                case 4:
-                    return "GhostPinky";
-                case 5:
-                    return "GhostPalm";
-                default:
-                    return null;
-            }
-        }
-
-        public static byte[] SetClutchState(String bufName, String bufState)
-        {
-            //触发Clutch
-            byte[] clutchState = new byte[2] { 0xff, 0xff };
-            switch (bufName)
-            {
-                case "GhostThumb":
-                    clutchState[0] = 0;
-                    break;
-                case "GhostIndex":
-                    clutchState[0] = 1;
-                    break;
-                case "GhostMiddle":
-                    clutchState[0] = 2;
-                    break;
-                case "GhostRing":
-                    clutchState[0] = 3;
-                    break;
-                case "GhostPinky":
-                    clutchState[0] = 4;
-                    break;
-                case "GhostPalm":
-                    clutchState[0] = 5;
-                    break;
-            }
-
-            switch (bufState)
-            {
-                case "Enter":
-                    clutchState[1] = 0;
-                    break;
-                case "Stay":
-                    clutchState[1] = 1;
-                    break;
-                case "Exit":
-                    clutchState[1] = 2;
-                    break;
-            }
-            return clutchState;
-        }
 
         private static bool IsHandValid(string whichHand)
         {
@@ -708,111 +647,6 @@ namespace HaptGlove
         //////////////////////////////////////////////////////////////////////////////////////////// 
 
         /// <summary>
-        /// DEPRECATED. To one finger
-        /// </summary>
-        /// <param name="clutchState"></param>
-        /// <param name="targetPres"></param>
-        public byte[] ApplyHaptics(byte[] clutchState, byte targetPres, bool compensateHysteresis)
-        {
-            if (!IsHandValid(whichHand))
-            {
-                Debug.Log("Invalid hand name: " + whichHand);
-                return null;
-            }
-
-            byte frequency = 0;
-            if ((targetPres > 0) & (targetPres < 10))
-            {
-                frequency = 0xff;
-            }
-
-            //BTCommu_Left bt = WhichBT(whichHand);
-            //if (bt == null)
-            //{
-            //    return;
-            //}
-            int presSource = (int)pressureData[5];
-            byte[] valveTiming = HaptGloveValvesCalibrationData.CalculateValveTiming(targetPres, clutchState[0], presSource, whichHand);
-
-            if ((clutchState[0] != 0xff) & (clutchState[1] != 0xff))
-            {
-                byte vOpen = valveTiming[0];
-                byte vDelay = valveTiming[1];
-                //编码+BT发送
-                Encode.Instance.add_u8(frequency);
-                Encode.Instance.add_u8(clutchState[0]);             // which finger
-                Encode.Instance.add_u8(clutchState[1]);             // enter, stay or exit
-                Encode.Instance.add_u8(targetPres);
-                Encode.Instance.add_u8(vOpen);
-                Encode.Instance.add_u8(vDelay);
-                Encode.Instance.add_b1(compensateHysteresis);
-                byte[] buf = Encode.Instance.add_fun((Byte)FunIndex.FI_SET_PRESSURE_DEPRECATED);       // FI = 3
-                Encode.Instance.clear_list();
-                //bt.BTSend(buf);
-
-                channelState[clutchState[0]] = clutchState[1] == 0
-                    ? new ChannelState { Mode = HapticMode.Pressure, Intensity = targetPres, Frequency = 0 }
-                    : new ChannelState { Mode = HapticMode.Off, Intensity = 0, Frequency = 0 };
-
-                return buf;
-            }
-            else
-            {
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// DEPRECATED. Apply vibration to one finger
-        /// </summary>
-        /// <param name="frequency"></param>
-        /// <param name="clutchState"></param>
-        /// <param name="targetPres"></param>
-        public byte[] ApplyHaptics(byte frequency, byte[] clutchState, byte targetPres, bool compensateHysteresis)
-        {
-            if (!IsHandValid(whichHand))
-            {
-                Debug.Log("Invalid hand name: " + whichHand);
-                return null;
-            }
-            //BTCommu_Left bt = WhichBT(whichHand);
-            //if (bt == null)
-            //{
-            //    Debug.Log("Invalid hand name");
-            //    return;
-            //}
-            int presSource = (int)pressureData[5];
-            byte[] valveTiming = HaptGloveValvesCalibrationData.CalculateValveTiming(targetPres, clutchState[0], presSource, whichHand);
-
-            if ((clutchState[0] != 0xff) & (clutchState[1] != 0xff))
-            {
-                byte vOpen = valveTiming[0];
-                byte vDelay = valveTiming[1];
-                //编码+BT发送
-                Encode.Instance.add_u8(frequency);
-                Encode.Instance.add_u8(clutchState[0]);             // which finger
-                Encode.Instance.add_u8(clutchState[1]);             // enter, stay or exit
-                Encode.Instance.add_u8(targetPres);
-                Encode.Instance.add_u8(vOpen);
-                Encode.Instance.add_u8(vDelay);
-                Encode.Instance.add_b1(compensateHysteresis);
-                byte[] buf = Encode.Instance.add_fun((Byte)FunIndex.FI_SET_PRESSURE_DEPRECATED);       // FI = 3
-                Encode.Instance.clear_list();
-                //bt.BTSend(buf);
-
-                channelState[clutchState[0]] = clutchState[1] == 0
-                    ? new ChannelState { Mode = HapticMode.Vibration, Intensity = targetPres, Frequency = frequency }
-                    : new ChannelState { Mode = HapticMode.Off, Intensity = 0, Frequency = 0 };
-
-                return buf;
-            }
-            else
-            {
-                return null;
-            }
-        }
-
-        /// <summary>
         /// DEPRECATED. To multiple fingers
         /// </summary>
         /// <param name="clutchStates"></param>
@@ -829,80 +663,6 @@ namespace HaptGlove
             if ((targetPres > 0) & (targetPres < 10))
             {
                 frequency = 0xff;
-            }
-
-            //BTCommu_Left bt = WhichBT(whichHand);
-            //if (bt == null)
-            //{
-            //    Debug.Log("Invalid hand name");
-            //    return;
-            //}
-            int presSource = (int)pressureData[5];
-
-            List<byte> HapticsFrame = new List<byte>();
-
-            for (int i = 0; i < clutchStates.Length; i++)
-            {
-                HapticsFrame.AddRange(ConstructHapticsFrame(frequency, clutchStates[i], targetPres, presSource, whichHand, compensateHysteresis));
-            }
-
-            //bt.BTSend(HapticsFrame.ToArray());
-            return HapticsFrame.ToArray();
-        }
-
-        /// <summary>
-        /// DEPRECATED. To multiple fingers
-        /// </summary>
-        /// <param name="clutchStates"></param>
-        /// <param name="targetPres"></param>
-        public byte[] ApplyHaptics(byte[][] clutchStates, byte[] targetPres, bool compensateHysteresis)
-        {
-            if (!IsHandValid(whichHand))
-            {
-                Debug.Log("Invalid hand name: " + whichHand);
-                return null;
-            }
-
-            byte[] frequency = new byte[5];
-            for (int i = 0; i < 5; i++)
-            {
-                if ((targetPres[i] > 0) & (targetPres[i] < 10))
-                {
-                    frequency[i] = 0xff;
-                }
-            }
-
-            //BTCommu_Left bt = WhichBT(whichHand);
-            //if (bt == null)
-            //{
-            //    Debug.Log("Invalid hand name");
-            //    return;
-            //}
-            int presSource = (int)pressureData[5];
-
-            List<byte> HapticsFrame = new List<byte>();
-
-            for (int i = 0; i < clutchStates.Length; i++)
-            {
-                HapticsFrame.AddRange(ConstructHapticsFrame(frequency[i], clutchStates[i], targetPres[i], presSource, whichHand, compensateHysteresis));
-            }
-
-            //bt.BTSend(HapticsFrame.ToArray());
-            return HapticsFrame.ToArray();
-        }
-
-        /// <summary>
-        /// DEPRECATED. Apply vibration to multiple fingers
-        /// </summary>
-        /// <param name="frequency"></param>
-        /// <param name="clutchStates"></param>
-        /// <param name="targetPres"></param>
-        public byte[] ApplyHaptics(byte frequency, byte[][] clutchStates, byte targetPres, bool compensateHysteresis)
-        {
-            if (!IsHandValid(whichHand))
-            {
-                Debug.Log("Invalid hand name: " + whichHand);
-                return null;
             }
 
             //BTCommu_Left bt = WhichBT(whichHand);
@@ -1306,56 +1066,6 @@ namespace HaptGlove
             //{
             //    batteryLevel = 0.01f;
             //}
-        }
-
-        public byte[] GetValveTimingFromVibIntensity(byte vibFrequency, byte vibIntensity, byte fingerID)
-        {
-            byte[] valveTiming = new byte[2];
-            byte onTiming = 0;
-            byte offTiming = 0;
-            
-            switch (vibIntensity)
-            {
-                case 1:
-                    if (fingerID == 5)
-                        onTiming = 7;
-                    else
-                        onTiming = 3;
-                    break;
-                case 2:
-                    if (fingerID == 5)
-                        onTiming = 7;
-                    else
-                        onTiming = 4;
-                    break;
-                case 3:
-                    if (fingerID == 5)
-                        onTiming = 7;
-                    else
-                        onTiming = 5;
-                    break;
-                default:
-                    if (fingerID == 5)
-                        onTiming = 7;
-                    else
-                        onTiming = 5;
-                    break;
-            }
-
-            int maxExhaustTime = 500 / vibFrequency - 3;
-
-            if (maxExhaustTime < 100)
-            {
-                offTiming = (byte)maxExhaustTime;
-            }
-            else
-            {
-                offTiming = 100;
-            }
-
-            valveTiming = new byte[] { onTiming, offTiming };
-
-            return valveTiming;
         }
 
         private class HaptGloveValvesCalibrationData
