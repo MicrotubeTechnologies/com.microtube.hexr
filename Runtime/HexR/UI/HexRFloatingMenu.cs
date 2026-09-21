@@ -64,11 +64,14 @@ public class HexRFloatingMenu : MonoBehaviour
     public float panelWidth = 0.32f;
 
     [Header("Behaviour")]
-    [Tooltip("Show the SCENES and DEMOS sections. On for the tutorial demos, which is what those " +
-             "sections are for. HexR > Add HexR Menu turns it off, because a panel dropped into " +
-             "someone's own project wants the gloves and the colliders and nothing else -- their " +
-             "scenes are not our demos.")]
-    public bool showDemoSections = true;
+    [Tooltip("Show a SCENES button per scene in Build Settings. For a tutorial that is split " +
+             "across scenes. Off where the demos all live in one scene and switch by group, " +
+             "where it would only offer a way out of the scene you are demonstrating.")]
+    public bool showSceneSwitcher = true;
+
+    [Tooltip("Show a DEMOS button per \"... Demo Components\" group in the scene. Costs nothing " +
+             "in a scene that has none -- the section is skipped.")]
+    public bool showDemoGroups = true;
 
     [Tooltip("Switch the old wrist menu off. Untick to run both while comparing them.")]
     public bool hideHandMenu = true;
@@ -677,7 +680,7 @@ public class HexRFloatingMenu : MonoBehaviour
     /// </summary>
     private float BuildSceneSection(float y)
     {
-        if (!showDemoSections)
+        if (!showSceneSwitcher)
         {
             return y;
         }
@@ -753,7 +756,7 @@ public class HexRFloatingMenu : MonoBehaviour
     /// </summary>
     private float BuildDemoSection(float y)
     {
-        if (!showDemoSections)
+        if (!showDemoGroups)
         {
             return y;
         }
