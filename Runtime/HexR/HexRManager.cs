@@ -220,16 +220,54 @@ namespace HexR
         // why the old failure text could only guess at permissions. Nothing else asks for
         // them: the bundled Java layer only knows the pre-Android-12 spellings
         // (BLUETOOTH/BLUETOOTH_ADMIN plus location), so the package has to.
-        private static readonly string[] BluetoothPermissions =
+        //
+        // Which names to ask for depends on the platform version, and asking for the wrong
+        // ones fails silently rather than loudly. Below API 31 those two names do not exist:
+        // HasUserAuthorizedPermission answers false forever and RequestUserPermission shows no
+        // dialog, so the poll below ran out its 60-second ceiling and then refused the connect.
+        // That is what stopped PICO 4 -- Android 10, API 29 -- from ever reaching BTConnection,
+        // while Quest, on Android 12 or newer, was unaffected. What API 23-30 gates a BLE scan
+        // on is location, so that is what gets asked for there.
+        private static string[] RequiredBluetoothPermissions()
         {
-            "android.permission.BLUETOOTH_SCAN",
-            "android.permission.BLUETOOTH_CONNECT",
-        };
+            return AndroidApiLevel() >= 31
+                ? new[] { "android.permission.BLUETOOTH_SCAN", "android.permission.BLUETOOTH_CONNECT" }
+                : new[] { "android.permission.ACCESS_FINE_LOCATION" };
+        }
+
+        private static int AndroidApiLevel()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            try
+            {
+                using (AndroidJavaClass version = new AndroidJavaClass("android.os.Build$VERSION"))
+                {
+                    return version.GetStatic<int>("SDK_INT");
+                }
+            }
+            catch (Exception e)
+            {
+                // If the version cannot be read, assume the stricter modern set: asking for a
+                // permission the device ignores is harmless, skipping one it enforces is not.
+                Debug.LogWarning("[HexR] Could not read Build.VERSION.SDK_INT (" + e.Message
+                    + ") -- assuming Android 12 or newer for Bluetooth permissions.");
+                return 31;
+            }
+#else
+            return 0;
+#endif
+        }
+
+        /// <summary>"android.permission.ACCESS_FINE_LOCATION" reads as "Location" on a button.</summary>
+        private static string ShortPermissionName(string permission)
+        {
+            return permission.EndsWith("ACCESS_FINE_LOCATION") ? "Location" : "Bluetooth";
+        }
 
         private IEnumerator ConnectWhenPermitted(HaptGloveHandler.HandType hand)
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
-            foreach (string permission in BluetoothPermissions)
+            foreach (string permission in RequiredBluetoothPermissions())
             {
                 if (UnityEngine.Android.Permission.HasUserAuthorizedPermission(permission))
                 {
@@ -253,7 +291,8 @@ namespace HexR
                     Debug.LogWarning("[HexR] " + permission + " was not granted -- BLE scanning "
                         + "will silently find nothing until it is. Grant it in the system app settings.");
                     SetHandText(hand, (hand == HaptGloveHandler.HandType.Left ? "Left" : "Right")
-                        + " blocked — allow Bluetooth in system settings, then try again");
+                        + " blocked — allow " + ShortPermissionName(permission)
+                        + " in system settings, then try again");
                     EndConnect(hand);
                     HexRPanel?.SetActive(true);
                     ConnectAttemptEnded?.Invoke(hand);
