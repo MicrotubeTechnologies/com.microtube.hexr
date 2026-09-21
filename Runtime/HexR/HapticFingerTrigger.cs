@@ -183,22 +183,44 @@ namespace HexR
                     Mathf.Abs(scale.z) > 0.0001f ? originalBoxSize.z / scale.z : originalBoxSize.z);
             }
         }
+        // Start reports each of the three wiring failures above and carries on, which leaves these
+        // fields null -- so the four methods below have to expect that rather than throw into
+        // whatever called them. The caller is usually not haptics code: a collider callback, a
+        // button press, Meta's interaction pass. A finger with nothing to send to sends nothing.
+        private bool CanSend()
+        {
+            return pressureTrackerMain != null;
+        }
+
+        private bool CanVibrate()
+        {
+            return gloveHandler != null && gloveHandler.haptics != null;
+        }
+
         public void TriggerFixPressure(float TargetPressure)
         {
+            if (!CanSend()) { return; }
+
             pressureTrackerMain.CustomSingleHaptics(HapticsFingertype, true, TargetPressure, 1f, true);
         }
         public void TriggerVibrationPressure(float Frequency, float Intensity)
         {
+            if (!CanVibrate()) { return; }
+
             byte[] btData = gloveHandler.haptics.HEXRVibration(HapticsFingertype, true, Frequency, Intensity);
             gloveHandler.BTSend(btData);
         }
         public void RemoveVibration()
         {
+            if (!CanVibrate()) { return; }
+
             byte[] btData = gloveHandler.haptics.HEXRVibration(HapticsFingertype, false, 0, 0);
             gloveHandler.BTSend(btData);
         }
         public void RemoveHaptics()
         {
+            if (!CanSend()) { return; }
+
             pressureTrackerMain.CustomSingleHaptics(HapticsFingertype, false, 0, 1f, true);
 
         }

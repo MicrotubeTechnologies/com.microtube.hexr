@@ -117,12 +117,16 @@ namespace HexR
             presser = trigger;
             cap.localPosition = capRestPosition + pressDirection.normalized * travel;
 
+            // The action first, the feel second. These used to run the other way round, and a
+            // throw inside the haptics -- which is what an unpaired glove produced -- unwound out
+            // of OnTriggerEnter before ever reaching this line, so the button lit up, sank, and
+            // did nothing. Feedback is the part that may fail; what the button is for is not.
+            onPressed?.Invoke();
+
             if (pressPressure > 0f)
             {
                 trigger.TriggerFixPressure(pressPressure);
             }
-
-            onPressed?.Invoke();
         }
 
         private void OnTriggerExit(Collider other)
@@ -132,8 +136,8 @@ namespace HexR
                 return;
             }
 
-            Release();
             onReleased?.Invoke();
+            Release();
         }
 
         private void Release()
