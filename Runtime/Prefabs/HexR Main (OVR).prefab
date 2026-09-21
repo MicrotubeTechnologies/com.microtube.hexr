@@ -7038,7 +7038,7 @@ MonoBehaviour:
   spawnHeightOffset: -0.2
   spawnSideOffset: -0.35
   recallDistance: 4
-  panelWidth: 0.26
+  panelWidth: 0.32
   recenterOnStart: 1
   hideHandMenu: 1
   hideSceneSelector: 1

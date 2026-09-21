@@ -57,7 +57,7 @@ public class HexRFloatingMenu : MonoBehaviour
 
     [Header("Panel")]
     [Tooltip("Panel width in metres. Height follows from the contents.")]
-    public float panelWidth = 0.26f;
+    public float panelWidth = 0.32f;
 
     [Tooltip("Put the panel in front of the user when the scene starts. Untick to leave it exactly " +
              "where it sits in the scene -- which is what the Scene view preview is showing you.")]
@@ -79,20 +79,24 @@ public class HexRFloatingMenu : MonoBehaviour
     // The panel is laid out in pixels and then scaled down to metres, which is the usual way to
     // keep a world-space canvas crisp: font sizes and paddings stay in numbers that read like UI
     // numbers instead of fractions of a millimetre.
+    // Sizes below are panel pixels; panelWidth metres maps onto k_PanelWidthPx of them, so at
+    // the 0.32m default one pixel is about 0.9mm. That conversion is why the gaps are as large as
+    // they look: every button is a physical press volume now, and a fingertip is 15-20mm across,
+    // so anything under about a centimetre of separation lets one poke enter two buttons.
     private const float k_PanelWidthPx = 360f;
-    private const float k_Margin = 14f;
+    private const float k_Margin = 18f;
     private const float k_HeaderHeight = 46f;
     private const float k_SectionLabelHeight = 24f;
-    private const float k_ButtonHeight = 44f;
+    private const float k_ButtonHeight = 52f;
 
     // Depth of each button's press volume, in panel pixels. 360px is panelWidth metres, so at
     // the default 0.26m this is about 2cm -- deep enough that a fingertip moving at a normal
     // speed cannot tunnel through it between two physics frames.
     private const float k_PressDepthPx = 30f;
-    private const float k_GridButtonHeight = 34f;
-    private const float k_GridGap = 5f;
+    private const float k_GridButtonHeight = 42f;
+    private const float k_GridGap = 12f;
     private const float k_StatusHeight = 20f;
-    private const float k_Gap = 6f;
+    private const float k_Gap = 16f;
     private const float k_DotSize = 12f;
 
     private static readonly Color k_Background = new Color32(0x15, 0x18, 0x1E, 0xF5);
