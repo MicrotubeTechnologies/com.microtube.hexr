@@ -97,6 +97,8 @@ namespace HexR.MetaOVR
 
         private static void AttachAll()
         {
+            EnsurePassthrough();
+
             PressureTrackerMain[] trackers = HexRCompat.FindAll<PressureTrackerMain>(true);
 
             foreach (PressureTrackerMain tracker in trackers)
@@ -107,6 +109,32 @@ namespace HexR.MetaOVR
                     Attach(tracker);
                 }
             }
+        }
+
+        /// <summary>
+        /// Gives the rig a passthrough component, so the Meta demo comes up in passthrough the way
+        /// the PICO one does.
+        ///
+        /// PICO carries its equivalent on its rig prefab. The Meta rig has never had one, which is
+        /// why passthrough there only ever reported itself unavailable. Attaching it in code rather
+        /// than adding it to the prefab keeps the prefab out of a fourth round of surgery, and puts
+        /// it on the HexRManager object, which is DontDestroyOnLoad -- so it is created once and
+        /// rides every scene change, rather than once per scene.
+        /// </summary>
+        private static void EnsurePassthrough()
+        {
+            if (HexRCompat.FindAny<MetaOVRPassthrough>(true) != null)
+            {
+                return;
+            }
+
+            HexRManager manager = HexRCompat.FindAny<HexRManager>(true);
+            if (manager == null || manager.XRFramework != HexRManager.Options.MetaOVR)
+            {
+                return;
+            }
+
+            manager.gameObject.AddComponent<MetaOVRPassthrough>();
         }
     }
 }

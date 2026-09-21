@@ -41,14 +41,15 @@ namespace HexR.MetaOVR
 
         public bool IsAvailable
         {
-            get { return Resolve() != null; }
+            // Asking must not build one. Only an actual request for passthrough does that.
+            get { return Resolve(false) != null; }
         }
 
         public bool IsOn
         {
             get
             {
-                OVRPassthroughLayer l = Resolve();
+                OVRPassthroughLayer l = Resolve(false);
                 return l != null && !l.hidden;
             }
         }
@@ -77,7 +78,7 @@ namespace HexR.MetaOVR
 
         public void SetPassthrough(bool on)
         {
-            OVRPassthroughLayer l = Resolve();
+            OVRPassthroughLayer l = Resolve(on);
             if (l == null)
             {
                 return;
@@ -87,13 +88,43 @@ namespace HexR.MetaOVR
             ApplyCamera(on);
         }
 
-        private OVRPassthroughLayer Resolve()
+        /// <summary>
+        /// The passthrough layer, created if the scene has none and <paramref name="create"/>.
+        ///
+        /// Creating it is the point. Neither tutorial scene ships an OVRPassthroughLayer, and
+        /// without one this component is inert -- which is what "Passthrough - headset only"
+        /// used to be reporting: not an unsupported headset, just a scene with no layer in it.
+        /// Adding it here rather than to the scenes means every Meta scene gets passthrough
+        /// without each one being edited, and a scene that already has a layer keeps its own.
+        ///
+        /// A fresh layer already defaults to Underlay + Reconstructed + visible, which is exactly
+        /// full-screen passthrough, so nothing here restates those.
+        /// </summary>
+        private OVRPassthroughLayer Resolve(bool create)
         {
-            if (layer == null)
+            if (layer != null)
             {
-                layer = HexRCompat.FindAny<OVRPassthroughLayer>(true);
+                return layer;
             }
 
+            layer = HexRCompat.FindAny<OVRPassthroughLayer>(true);
+            if (layer != null || !create)
+            {
+                return layer;
+            }
+
+            // No OVRManager means this is not a Meta rig, and a layer would have nothing to talk
+            // to -- leave the scene alone rather than adding a component that cannot work.
+            OVRManager manager = HexRCompat.FindAny<OVRManager>(true);
+            if (manager == null)
+            {
+                return null;
+            }
+
+            // The layer renders nothing unless Insight is on; both tutorial scenes already set
+            // it, but a scene built from scratch will not.
+            manager.isInsightPassthroughEnabled = true;
+            layer = manager.gameObject.AddComponent<OVRPassthroughLayer>();
             return layer;
         }
 
