@@ -1,25 +1,27 @@
 {
-    "name": "HexR.Runtime.MetaOVR",
-    "rootNamespace": "HexR.MetaOVR",
+    "name": "HexR.Editor.OpenXR",
+    "rootNamespace": "HexR.OpenXR",
     "references": [
         "HexR.Runtime",
-        "Oculus.Interaction",
-        "Oculus.VR"
+        "HexR.Runtime.OpenXR",
+        "Unity.XR.Interaction.Toolkit"
     ],
-    "includePlatforms": [],
+    "includePlatforms": [
+        "Editor"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [
-        "HEXR_META_OVR"
+        "HEXR_XRI"
     ],
     "versionDefines": [
         {
-            "name": "com.meta.xr.sdk.interaction",
+            "name": "com.unity.xr.interaction.toolkit",
             "expression": "",
-            "define": "HEXR_META_OVR"
+            "define": "HEXR_XRI"
         }
     ],
     "noEngineReferences": false

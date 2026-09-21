@@ -21,7 +21,7 @@ namespace HexR
     // ROADMAP.md). Not worth risking as a side effect of a dev tool.
     public class HexRToolsWindow : EditorWindow
     {
-        [MenuItem("HexR/HexR Tools", false, -10)]
+        [MenuItem("HexR/HexR Tools", false, -20)]
         public static void Open()
         {
             GetWindow<HexRToolsWindow>("HexR Tools");
@@ -48,7 +48,7 @@ namespace HexR
         [SerializeField] private bool simulatorMode = false;
         [SerializeField] private bool armed = false;
 
-        private List<HexRManager.SetupCheck> setupResults;
+        private List<HexRSetupValidator.SetupCheck> setupResults;
         private bool setupOk;
 
         // HaptGloveHandler keeps its connection flag private, and the SDK exposes no
@@ -505,8 +505,8 @@ namespace HexR
                 return;
             }
 
-            setupResults = new List<HexRManager.SetupCheck>();
-            setupOk = HexRManager.ValidateSetup(controller, setupResults);
+            setupResults = new List<HexRSetupValidator.SetupCheck>();
+            setupOk = HexRSetupValidator.Run(controller, setupResults);
         }
 
         private void DrawSetupTab()
@@ -529,7 +529,7 @@ namespace HexR
                     : setupResults.Count(c => !c.Ok) + " check(s) need attention before this scene will run on the headset.",
                 setupOk ? MessageType.Info : MessageType.Warning);
 
-            foreach (HexRManager.SetupCheck check in setupResults)
+            foreach (HexRSetupValidator.SetupCheck check in setupResults)
             {
                 using (new EditorGUILayout.HorizontalScope())
                 {
@@ -555,7 +555,7 @@ namespace HexR
                 GUI.backgroundColor = setupOk ? prevBg : OrangeDark;
                 if (GUILayout.Button("Fix all (re-run Auto Setup)"))
                 {
-                    HexRManager.AutoSetup(controller);
+                    HexRAutoSetup.Run(controller);
                     RunValidation();
                 }
                 GUI.backgroundColor = prevBg;

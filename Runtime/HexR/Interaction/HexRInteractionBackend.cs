@@ -100,6 +100,28 @@ namespace HexR
         /// is false means "nothing here for me", which is not an error.
         /// </summary>
         IHexRInteractionBinding Bind(GameObject target, IHexRInteractionSink sink);
+
+        /// <summary>
+        /// Make an object the user can pick up and move, using whatever this SDK calls that.
+        ///
+        /// For the shared menu panel, which builds itself at runtime and so cannot have an
+        /// interactable authored onto it. The caller has already added the Rigidbody and the
+        /// collider -- those are the same on both backends -- so this adds only the SDK's own
+        /// interactable on top.
+        /// </summary>
+        void MakeGrabbable(GameObject target);
+
+        /// <summary>
+        /// Make a world-space canvas respond to this SDK's pointers, so its buttons can be pressed.
+        /// </summary>
+        void MakeCanvasPointable(Canvas canvas);
+
+        /// <summary>
+        /// Whether the user is currently holding this object. The menu asks before recentring
+        /// itself, because yanking the panel out of someone's grip mid-move is worse than leaving
+        /// it where they put it.
+        /// </summary>
+        bool IsGrabbed(GameObject target);
     }
 
     /// <summary>
@@ -237,7 +259,7 @@ namespace HexR
             {
                 diagnostic = backends.Count == 0
                     ? "No interaction backend is installed. Add the XR Interaction Toolkit or the Meta "
-                      + "Interaction SDK, or use HexRGrabbable instead."
+                      + "Interaction SDK, then put your SDK's interactable on this object."
                     : "No installed interaction backend found anything to bind to on this object.";
             }
 

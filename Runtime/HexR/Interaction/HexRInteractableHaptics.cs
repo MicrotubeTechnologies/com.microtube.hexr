@@ -22,8 +22,8 @@ namespace HexR
     /// the glove's finger colliders and writes straight to the glove, bypassing
     /// <see cref="PressureTrackerMain"/> entirely. It works, but it means the object is grabbable
     /// *only* by a HexR hand -- so the app can't be built or tested without gloves, and it behaves
-    /// differently from every other interactable in the scene. Both are supported; this one is the
-    /// right default for a project already using an interaction SDK.
+    /// differently from every other interactable in the scene. HexRGrabbable is deprecated and
+    /// will be removed; this is the path for all new work.
     ///
     /// Haptics still only fire while <c>PressureTrackerMain.IsHandNear()</c> is true. The hand-near
     /// source on each Pressure Controller is what makes that true from the SDK's own grab and poke
@@ -57,7 +57,7 @@ namespace HexR
 
         [Header("How hard")]
         [Tooltip("Pressure applied to each selected finger. The glove's usable range is 10 (barely " +
-                 "there) to 60 (firm). HexRGrabbable used 30 for small props and 40 for the torch.")]
+                 "there) to 60 (firm). 30 suits a small prop, 40 something heavier like a torch.")]
         [Range(0f, 60f)]
         public float strength = 30f;
 
@@ -257,7 +257,7 @@ namespace HexR
             {
                 warnedNoTrackers = true;
                 Debug.LogWarning("[HexR] " + name + ": found no Pressure Controllers, so this object will be "
-                                 + "grabbable but will not be felt. Run HexR > Auto Setup Scene.", this);
+                                 + "grabbable but will not be felt. Run HexR > Troubleshoot > Re-run Auto Setup.", this);
             }
 
             return any;
@@ -410,7 +410,7 @@ namespace HexR
 
             warnedMissingSide = true;
             Debug.LogWarning("[HexR] " + name + ": the " + side + " hand interacted but there is no " + side
-                             + " Pressure Controller, so nothing was felt. Run HexR > Auto Setup Scene.", this);
+                             + " Pressure Controller, so nothing was felt. Run HexR > Troubleshoot > Re-run Auto Setup.", this);
         }
 
         private void Engage(int side)

@@ -8,8 +8,6 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using TMPro;
-using System.Linq;
-using UnityEngine.UI;
 namespace HexR
 {
     public class HexRManager : MonoBehaviour
@@ -32,11 +30,8 @@ namespace HexR
 
         public HaptGloveHandler leftHand;
         public HaptGloveHandler rightHand;
-        public GameObject HandMenu;
-        public GameObject NewHandMenu;
 
         public GameObject BluetoothIndicatorL, BluetoothIndicatorR, pumpIndicator_L, pumpIndicator_R, HexRPanel;
-        private string bluetoothLog;
         public TextMeshProUGUI RightBtText, LeftBtText;
 
         // The raw hand rig isn't mirror-symmetric between hands in local space (confirmed --
@@ -93,7 +88,6 @@ namespace HexR
 
         // Merged in from HaptGloveUI (2026-07-30) -- tracks which hand's button most
         // recently initiated a connection, for UI wired via ConnectLeftBT/ConnectRightBT.
-        private List<string> controlledHandsList = new List<string>();
 
         // A connect request counts as in flight from the button press until the glove
         // connects, fails, or drops. Pressing again while one is running starts a second
@@ -204,8 +198,6 @@ namespace HexR
                 return;
             }
 
-            controlledHandsList.Remove("Left");
-            controlledHandsList.Add("Right");
             RightBtText.text = "Searching for HexR Right…";
             StartCoroutine(ConnectWhenPermitted(HaptGloveHandler.HandType.Right));
         }
@@ -217,8 +209,6 @@ namespace HexR
                 return;
             }
 
-            controlledHandsList.Add("Left");
-            controlledHandsList.Remove("Right");
             LeftBtText.text = "Searching for HexR Left…";
             StartCoroutine(ConnectWhenPermitted(HaptGloveHandler.HandType.Left));
         }
@@ -486,7 +476,6 @@ namespace HexR
                 {
                     LeftBtText.text = "Left connected — starting up…";
                 }
-                bluetoothLog = "Left glove connected: " + "HaptGLove " + hand.ToString();
                 StartCoroutine(Pump(leftHand.GetComponent<HaptGloveHandler>()));
                 StopBatteryPolling(hand);
                 leftBatteryPoll = StartCoroutine(TriggerFunctionEvery8Seconds("Left"));
@@ -498,7 +487,6 @@ namespace HexR
                 {
                     RightBtText.text = "Right connected — starting up…";
                 }
-                bluetoothLog = "Right glove connected: " + "HaptGLove " + hand.ToString();
                 StartCoroutine(Pump(rightHand.GetComponent<HaptGloveHandler>()));
                 StopBatteryPolling(hand);
                 rightBatteryPoll = StartCoroutine(TriggerFunctionEvery8Seconds("Right"));
@@ -590,7 +578,6 @@ namespace HexR
                 {
                     LeftBtText.text = "Left not found — check Bluetooth permissions, then try again";
                 }
-                bluetoothLog = "Left glove connection failed: " + "HaptGlove " + hand.ToString();
             }
             else if (hand == HaptGloveHandler.HandType.Right)
             {
@@ -599,7 +586,6 @@ namespace HexR
                 {
                     RightBtText.text = "Right not found — check Bluetooth permissions, then try again";
                 }
-                bluetoothLog = "Right glove connection failed: " + "HaptGlove " + hand.ToString();
             }
             StopBatteryPolling(hand);
             HexRPanel?.SetActive(true);
@@ -617,7 +603,6 @@ namespace HexR
                 {
                     LeftBtText.text = "Left disconnected — reconnecting…";
                 }
-                bluetoothLog = "Left glove disconnected: " + "HaptGlove " + hand.ToString();
             }
             else if (hand == HaptGloveHandler.HandType.Right)
             {
@@ -626,7 +611,6 @@ namespace HexR
                 {
                     RightBtText.text = "Right disconnected — reconnecting…";
                 }
-                bluetoothLog = "Right glove disconnected: " + "HaptGlove " + hand.ToString();
             }
             StopBatteryPolling(hand);
             HexRPanel?.SetActive(true);
@@ -668,171 +652,7 @@ namespace HexR
             rightHand.hapticsInteratableLayers.Add(LayerMask.NameToLayer(layerName));
         }
 
-        public string[] GetHaptGloveInteractableLayer()
-        {
-            int[] layers = rightHand.hapticsInteratableLayers.ToArray();
-            string[] layerNames = new string[layers.Length];
 
-            for (int i = 0; i < layers.Length; i++)
-            {
-                layerNames[i] = LayerMask.LayerToName(layers[i]);
-            }
-
-            return layerNames;
-        }
-
-
-#if UNITY_EDITOR
-        // Extracted so both the Inspector's "Auto Set Up HexR" button and the top-level
-        // HexR > Auto Setup Scene menu item (Editor/HexRMenu.cs) run the exact same
-        // logic instead of it being duplicated in two places.
-        public static void AutoSetup(HexRManager controller)
-        {
-            try
-            {
-                controller.rightHand = GameObject.Find("Right Hand Physics").GetComponent<HaptGloveHandler>();
-                controller.leftHand = GameObject.Find("Left Hand Physics").GetComponent<HaptGloveHandler>();
-                Debug.Log("Right Hand Physics Found And Assigned.");
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogWarning("[HexR] AutoSetup: couldn't find/assign Left/Right Hand Physics -- " + e.Message + ". Remember to assign them manually.");
-            }
-
-            if (controller.XRFramework == Options.OpenXR)
-            {
-                //Set up hand menu
-                try
-                {
-                    controller.NewHandMenu = Instantiate(controller.HandMenu);
-                    DestroyImmediate(controller.HandMenu);
-                    controller.NewHandMenu.transform.SetParent(GameObject.Find("Camera Offset").transform);
-                    controller.NewHandMenu.transform.localPosition = Vector3.zero;
-                    controller.HandMenu = controller.NewHandMenu;
-                    // Directly find inactive GameObjects
-                    controller.BluetoothIndicatorL = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "Bluetooth Indicator L");
-                    controller.pumpIndicator_L = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "Pump Indicator L");
-                    controller.BluetoothIndicatorR = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "Bluetooth Indicator R");
-                    controller.pumpIndicator_R = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "Pump Indicator R");
-                    controller.LeftBtText = HexRCompat.FindAll<TextMeshProUGUI>(true).FirstOrDefault(obj => obj.name == "Left HexR Text");
-                    controller.RightBtText = HexRCompat.FindAll<TextMeshProUGUI>(true).FirstOrDefault(obj => obj.name == "Right HexR Text");
-                    controller.HexRPanel = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "HexR Panel");
-
-                    Debug.Log("HexR Hand Menu Set Up Complete");
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogWarning("[HexR] AutoSetup: HexR panel is not set up -- " + e.Message + ". Manual set up needed.");
-                }
-                //Set up hand menu bluetooth buttons
-                try
-                {
-                    Button RightBluetoothButton = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "Right Bluetooth Button").GetComponent<Button>();
-                    Button LeftBluetoothButton = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "Left Bluetooth Button").GetComponent<Button>();
-
-                    RightBluetoothButton.onClick.AddListener(controller.ConnectRightBT);
-                    LeftBluetoothButton.onClick.AddListener(controller.ConnectLeftBT);
-                    Debug.Log("HexR panel button set up complete.");
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogWarning("[HexR] AutoSetup: HexR panel button is not set up -- " + e.Message + ". Manual set up needed.");
-                }
-                // Find hand root for physics hand
-                try
-                {
-                    GameObject LeftXR = GameObject.Find("Left Hand Interaction Visual");
-                    GameObject RightXR = GameObject.Find("Right Hand Interaction Visual");
-                    PhysicsHandTracking LeftP = controller.leftHand.gameObject.GetComponent<PhysicsHandTracking>();
-                    PhysicsHandTracking RightP = controller.rightHand.gameObject.GetComponent<PhysicsHandTracking>();
-                    LeftP.handRoot = LeftXR.transform.Find("L_Wrist");
-                    RightP.handRoot = RightXR.transform.Find("R_Wrist");
-                    EditorUtility.SetDirty(LeftP); // Mark as dirty to save changes
-                    EditorUtility.SetDirty(RightP); // Mark as dirty to save changes
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogWarning("[HexR] AutoSetup: XR hand is not linked to Physics hand tracking -- " + e.Message + ". Manual link needed: drag the hand root of your VR hand to the left and right PhysicsHandTracking script.");
-                }
-            }
-
-            else if (controller.XRFramework == Options.MetaOVR)
-            {
-                //Set up HexR Panel
-                try
-                {
-                    // Directly find inactive GameObjects
-                    controller.BluetoothIndicatorL = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "Bluetooth Indicator L");
-                    controller.pumpIndicator_L = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "Pump Indicator L");
-                    controller.BluetoothIndicatorR = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "Bluetooth Indicator R");
-                    controller.pumpIndicator_R = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "Pump Indicator R");
-                    controller.LeftBtText = HexRCompat.FindAll<TextMeshProUGUI>(true).FirstOrDefault(obj => obj.name == "Left HexR Text");
-                    controller.RightBtText = HexRCompat.FindAll<TextMeshProUGUI>(true).FirstOrDefault(obj => obj.name == "Right HexR Text");
-                    controller.HexRPanel = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "HexR Panel");
-
-                    Debug.Log("HexR Panel Set Up Complete");
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogWarning("[HexR] AutoSetup: HexR panel is not set up -- " + e.Message + ". Manual set up needed.");
-                }
-                // Find hand root for physics hand
-                try
-                {
-                    PhysicsHandTracking LeftP = controller.leftHand.gameObject.GetComponent<PhysicsHandTracking>();
-                    PhysicsHandTracking RightP = controller.rightHand.gameObject.GetComponent<PhysicsHandTracking>();
-                    LeftP.handRoot = null;
-                    RightP.handRoot = null;
-
-                    // "OpenXRLeftHand/OpenXRRightHand" first: from com.meta.xr.sdk.interaction
-                    // v201 on, HandVisual.Awake deactivates the legacy OculusHand_L/R bone rig
-                    // and drives the OpenXR one instead, so pointing handRoot at OculusHand_L/R
-                    // now hands PhysicsHandTracking a root that goes inactive on Awake (and that
-                    // GameObject.Find can no longer re-find when it nulls out).
-                    // "OculusHand_L/R" is the legacy Oculus Integration naming, still correct on
-                    // older SDKs. Projects built with Meta's "Building Blocks" hand-tracking
-                    // block instead have "LeftOVRHand"/"RightOVRHand" (under "[BuildingBlock]
-                    // Hand Tracking left/right") -- try that too rather than silently failing and
-                    // leaving handRoot unassigned.
-                    GameObject leftHandObj = FindHandVisualRoot("OpenXRLeftHand", "OculusHand_L", "LeftOVRHand");
-                    GameObject rightHandObj = FindHandVisualRoot("OpenXRRightHand", "OculusHand_R", "RightOVRHand");
-
-                    LeftP.handRoot = leftHandObj.transform;
-                    RightP.handRoot = rightHandObj.transform;
-                    EditorUtility.SetDirty(LeftP); // Mark as dirty to save changes
-                    EditorUtility.SetDirty(RightP); // Mark as dirty to save changes
-
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogWarning("[HexR] AutoSetup: XR hand is not linked to Physics hand tracking -- " + e.Message + ". Manual link needed: drag the hand root of your VR hand to the left and right PhysicsHandTracking script.");
-                }
-            }
-
-            // Add trigger colliders + HapticFingerTrigger to each fingertip/palm directly on
-            // the raw tracked hand -- this is now the one and only haptics/grab
-            // touch-detection path (see PhysicsHandTracking.ResolveRawFingerJoint /
-            // ResolveRawPalmJoint). Runs after handRoot is wired above, and is safe to
-            // re-run: existing colliders are never touched, existing HapticFingerTrigger
-            // components just get their config refreshed.
-            AutoAddFingerHaptics(controller);
-
-            // Wires handType (and, for Meta OVR, the grab/poke interactors used to gate
-            // hand-near haptics) on each "Left/Right Pressure Controller" -- previously only
-            // validated as present, never actually configured by Auto Setup.
-            AutoSetupPressureControllers(controller);
-
-            // One visualizer for the whole rig, on the manager. It looks both hands up through
-            // HexRManager, so this single instance draws every tracked-hand and ghost-rig
-            // collider -- and, unlike the per-hand-root ones this replaces, it survives a scene
-            // change along with the manager.
-            EnsureColliderVisualizer(controller.gameObject);
-
-            EditorUtility.SetDirty(controller); // Mark as dirty to save changes
-
-            ValidateSetup(controller);
-        }
-#endif
 
         // Everything from here down is deliberately outside the UNITY_EDITOR fence, even though
         // Auto Setup is its main caller: this rig is DontDestroyOnLoad and the tracked Meta hands
@@ -845,7 +665,7 @@ namespace HexR
         // grab-adjusted pose the rest of the HexR rig follows, and it's the object the previous
         // OculusHand_L/R lookup happened to land on. Searches inactive objects too, since the
         // OpenXR hand root is authored inactive in rigs that predate the v201 SDK.
-        private static GameObject FindHandVisualRoot(params string[] candidateNames)
+        internal static GameObject FindHandVisualRoot(params string[] candidateNames)
         {
             GameObject[] all = HexRCompat.FindAll<GameObject>(true);
             foreach (string name in candidateNames)
@@ -883,20 +703,20 @@ namespace HexR
             return false;
         }
 
-        private static void AutoAddFingerHaptics(HexRManager controller)
+        internal static void AutoAddFingerHaptics(HexRManager controller)
         {
             AutoAddFingerHapticsForHand(controller, controller.leftHand, HaptGloveHandler.HandType.Left);
             AutoAddFingerHapticsForHand(controller, controller.rightHand, HaptGloveHandler.HandType.Right);
         }
 
-        private static readonly HapticFingerTrigger.FingerType[] Fingers = new[]
+        internal static readonly HapticFingerTrigger.FingerType[] Fingers = new[]
         {
             HapticFingerTrigger.FingerType.Thumb, HapticFingerTrigger.FingerType.Index,
             HapticFingerTrigger.FingerType.Middle, HapticFingerTrigger.FingerType.Ring,
             HapticFingerTrigger.FingerType.Little
         };
 
-        private static void AutoSetupPressureControllers(HexRManager controller)
+        internal static void AutoSetupPressureControllers(HexRManager controller)
         {
             AutoSetupPressureController(controller, controller.leftHand, HaptGloveHandler.HandType.Left);
             AutoSetupPressureController(controller, controller.rightHand, HaptGloveHandler.HandType.Right);
@@ -971,7 +791,7 @@ namespace HexR
         // once, on the manager itself: the visualizer resolves both hands' tracked and ghost
         // roots through HexRManager rather than scanning its own children, so where it sits no
         // longer decides what it can draw. Point the HexR Panel's collider toggle at this one.
-        private static void EnsureColliderVisualizer(GameObject target)
+        internal static void EnsureColliderVisualizer(GameObject target)
         {
             if (target.GetComponent<HaptGloveCollidersVisualizer>() == null)
             {
@@ -1111,373 +931,6 @@ namespace HexR
 #endif
         }
 
-        // A single check's outcome -- lets tooling (the HexR Tools window's Setup tab)
-        // render the same checks ValidateSetup logs to the console as a structured
-        // checklist, instead of re-implementing the checks a second time and risking the
-        // two copies drifting apart.
-        public struct SetupCheck
-        {
-            public bool Ok;
-            public string Title;
-            public string Detail;
 
-            public SetupCheck(bool ok, string title, string detail)
-            {
-                Ok = ok;
-                Title = title;
-                Detail = detail;
-            }
-        }
-
-        // Read-only sanity pass over everything AutoSetup is supposed to wire up, run
-        // automatically at the end of AutoSetup and also callable on its own (Inspector
-        // button / HexR > Validate Scene Setup) to re-check a scene without redoing the
-        // GameObject.Find-based rewiring above -- e.g. after someone hand-edits a hand root,
-        // or on a scene AutoSetup was never run on in the first place. AutoSetup's own
-        // try/catch blocks intentionally swallow failures and move on (a missing hand menu
-        // shouldn't abort finding the hand roots), so this is the one place that adds up
-        // everything left unassigned and reports it together instead of one log line at a
-        // time buried in the console.
-        //
-        // results is optional -- pass a list to also collect a structured SetupCheck per
-        // item (used by the HexR Tools window); existing callers that only want the
-        // console log / bool can keep calling this with just controller.
-        public static bool ValidateSetup(HexRManager controller, List<SetupCheck> results = null)
-        {
-            bool ok = true;
-
-            ok &= Check(results, controller.leftHand != null, "Left Hand Physics assigned", "Left Hand Physics (HaptGloveHandler) is not assigned.");
-            ok &= Check(results, controller.rightHand != null, "Right Hand Physics assigned", "Right Hand Physics (HaptGloveHandler) is not assigned.");
-
-            // Unlike the indicators/text below (all read via ?. or null-checked at their call
-            // sites), HexRPanel.SetActive(...) is called unguarded from
-            // HaptGlove_OnConnectedFailed/HaptGlove_OnDisconnected -- leaving this unassigned
-            // isn't a blank UI element, it's a NullReferenceException the first time a
-            // connection fails or drops.
-            ok &= Check(results, controller.HexRPanel != null, "HexRPanel assigned",
-                "HexRPanel is not assigned -- this will throw a NullReferenceException the first time a connection fails or drops (HaptGlove_OnConnectedFailed/OnDisconnected call HexRPanel.SetActive(true) unguarded).");
-
-            ok &= Check(results, controller.LeftBtText != null, "Left Bluetooth status text assigned", "Left Bluetooth status text is not assigned -- connection status won't be visible.");
-            ok &= Check(results, controller.RightBtText != null, "Right Bluetooth status text assigned", "Right Bluetooth status text is not assigned -- connection status won't be visible.");
-            ok &= Check(results, controller.BluetoothIndicatorL != null, "Left Bluetooth indicator assigned", "Left Bluetooth indicator is not assigned.");
-            ok &= Check(results, controller.BluetoothIndicatorR != null, "Right Bluetooth indicator assigned", "Right Bluetooth indicator is not assigned.");
-            ok &= Check(results, controller.pumpIndicator_L != null, "Left pump indicator assigned", "Left pump indicator is not assigned.");
-            ok &= Check(results, controller.pumpIndicator_R != null, "Right pump indicator assigned", "Right pump indicator is not assigned.");
-
-            if (controller.XRFramework == Options.OpenXR)
-            {
-                ok &= Check(results, controller.HandMenu != null, "HexR Hand Menu assigned (OpenXR)", "HexR Hand Menu is not assigned (required for OpenXR).");
-
-                // Meta OVR has three hand-near sources and can lose this one without noticing;
-                // OpenXR has only this one. With no ProximityCheck anywhere in the scene, an
-                // OpenXR rig's IsHandNear is false forever and every haptic call that doesn't
-                // pass ByPassHandCheck is silently dropped -- which looks exactly like broken
-                // hardware, so it's worth failing setup over rather than leaving to discovery.
-                ok &= Check(results,
-                    HexRCompat.FindAll<ProximityCheck>(true).Length > 0,
-                    "Proximity Check present (OpenXR)",
-                    "No ProximityCheck in this scene. On OpenXR it is the only thing that sets hand-near, so haptics "
-                    + "will never fire unless the call passes ByPassHandCheck. Add a ProximityCheck with a trigger "
-                    + "collider to each object the hand should be able to feel.");
-            }
-
-            ok &= ValidateHand(controller.leftHand, HaptGloveHandler.HandType.Left, results);
-            ok &= ValidateHand(controller.rightHand, HaptGloveHandler.HandType.Right, results);
-
-            Debug.Log(ok
-                ? "[HexR] Setup check passed -- all essential references are linked."
-                : "[HexR] Setup check found issues -- see warnings/errors above.");
-            return ok;
-        }
-
-        // Logs (matching prior behavior exactly) and, if results != null, records the
-        // check for the Setup tab's checklist.
-        private static bool Check(List<SetupCheck> results, bool ok, string title, string detail)
-        {
-            if (!ok)
-            {
-                Debug.LogWarning("[HexR] Setup check: " + detail);
-            }
-            results?.Add(new SetupCheck(ok, title, ok ? "OK" : detail));
-            return ok;
-        }
-
-        private static bool ValidateHand(HaptGloveHandler hand, HaptGloveHandler.HandType expected, List<SetupCheck> results = null)
-        {
-            string label = expected == HaptGloveHandler.HandType.Left ? "Left" : "Right";
-            if (hand == null) return true; // already reported by the caller
-
-            PhysicsHandTracking tracking = hand.GetComponent<PhysicsHandTracking>();
-            if (tracking == null)
-            {
-                return Check(results, false, label + " hand has PhysicsHandTracking", label + " hand has no PhysicsHandTracking component -- it won't move.");
-            }
-
-            bool ok = true;
-            ok &= Check(results, tracking.handRoot != null, label + " hand's handRoot assigned",
-                label + " hand's PhysicsHandTracking.handRoot is not assigned -- this hand won't track, and any collider-based haptics on it will never trigger.");
-
-            if (tracking.handRoot != null)
-            {
-                // Naming mismatch is a warning, not a hard failure -- flagged separately from
-                // the "is it assigned at all" check above so both surface independently
-                // (deliberately not folded into `ok`, matching the original behavior).
-                Check(results, NameSuggestsHand(tracking.handRoot.name, expected), label + " hand's handRoot name looks right",
-                    label + " hand's PhysicsHandTracking.handRoot is '" + tracking.handRoot.name + "', which doesn't look like a " + label + "-hand object -- double-check this isn't wired to the other hand's transform.");
-            }
-
-            // HexrRoot is intentionally not required -- it's only used for the (now
-            // optional) ghost-rig mirroring; unassigned just means no ghost rig, which
-            // PhysicsHandTracking already handles gracefully.
-
-            // HapticFingerTrigger/HexRGrabbable/SpecialHaptics all find this by
-            // GameObject.Find("Left/Right Pressure Controller") at their own runtime Start()
-            // -- not something AutoSetup wires or creates, so a missing/renamed one won't
-            // show up as a broken reference anywhere else, just a NullReferenceException the
-            // first time any fingertip HapticFingerTrigger fires. Flag it here instead.
-            GameObject pressureControllerObj = GameObject.Find(label + " Pressure Controller");
-            bool pressureControllerOk = pressureControllerObj != null && pressureControllerObj.GetComponent<PressureTrackerMain>() != null;
-            ok &= Check(results, pressureControllerOk, label + " Pressure Controller present",
-                "\"" + label + " Pressure Controller\" (with a PressureTrackerMain component) was not found in the scene -- every " + label.ToLowerInvariant() + "-hand HapticFingerTrigger will NullReferenceException the first time it tries to fire.");
-
-            // Grasping.haptGloveHandler is a manually-wired reference, not derived from the
-            // hand it's on -- the easiest way to end up with wrong-hand haptics is this being
-            // dragged onto the other hand's HaptGloveHandler by mistake.
-            Grasping grasping = hand.GetComponent<Grasping>();
-            if (grasping != null)
-            {
-                string pointsAt = grasping.haptGloveHandler == null ? "nothing" : grasping.haptGloveHandler.gameObject.name;
-                ok &= Check(results, grasping.haptGloveHandler == hand, label + " hand's Grasping points at its own HaptGloveHandler",
-                    label + " hand's Grasping.haptGloveHandler points at " + pointsAt + " instead of its own HaptGloveHandler -- this will send that hand's physics-grasp haptics to the wrong glove.");
-            }
-
-            ok &= ValidateFingerHaptics(tracking, expected, label, results);
-
-            return ok;
-        }
-
-        // Confirms every fingertip + palm joint on the raw tracked hand has both a trigger
-        // Collider and a correctly configured HapticFingerTrigger -- what AutoAddFingerHaptics
-        // is supposed to have wired up.
-        private static bool ValidateFingerHaptics(PhysicsHandTracking tracking, HaptGloveHandler.HandType expected, string label, List<SetupCheck> results)
-        {
-            if (tracking.handRoot == null) return true; // already reported by the handRoot check above
-
-            bool ok = true;
-            HapticFingerTrigger.HandType expectedTriggerHand = expected == HaptGloveHandler.HandType.Left ? HapticFingerTrigger.HandType.Left : HapticFingerTrigger.HandType.Right;
-
-            foreach (HapticFingerTrigger.FingerType finger in Fingers)
-            {
-                Transform joint = tracking.ResolveRawFingerJoint(finger);
-                ok &= CheckFingerHapticJoint(joint, finger, expectedTriggerHand, label, results);
-            }
-
-            ok &= CheckFingerHapticJoint(tracking.ResolveRawPalmJoint(), HapticFingerTrigger.FingerType.Palm, expectedTriggerHand, label, results);
-
-            return ok;
-        }
-
-        private static bool CheckFingerHapticJoint(Transform joint, HapticFingerTrigger.FingerType finger, HapticFingerTrigger.HandType expectedTriggerHand, string label, List<SetupCheck> results)
-        {
-            string title = label + " " + finger + " haptic trigger";
-            if (joint == null)
-            {
-                return Check(results, false, title, label + " " + finger + " joint could not be resolved on the raw hand -- run Auto Set Up HexR, or check the hand rig's joint naming.");
-            }
-
-            Collider collider = joint.GetComponent<Collider>();
-            if (!Check(results, collider != null, title + " collider", label + " " + finger + " (" + joint.name + ") has no trigger Collider."))
-            {
-                return false;
-            }
-
-            // The check that would have caught collision haptics being silently dead: a trigger
-            // collider with no Rigidbody on either side of the pair never raises an event, and
-            // nothing else about the setup looks wrong when that happens.
-            Rigidbody body = joint.GetComponent<Rigidbody>();
-            string bodyProblem = null;
-            if (body == null)
-            {
-                bodyProblem = "has no Rigidbody -- Unity raises no trigger events between two colliders that "
-                    + "both lack one, so this finger will never fire haptics against a haptic zone";
-            }
-            else if (!body.isKinematic)
-            {
-                bodyProblem = "has a non-kinematic Rigidbody, so the fingertip will be simulated and drift off "
-                    + "the tracked joint";
-            }
-            else if (body.useGravity)
-            {
-                bodyProblem = "has a Rigidbody with gravity enabled";
-            }
-            else if (body.collisionDetectionMode != CollisionDetectionMode.ContinuousSpeculative)
-            {
-                bodyProblem = "has a Rigidbody set to " + body.collisionDetectionMode + " rather than "
-                    + "ContinuousSpeculative, so a fast finger can pass through a thin haptic zone between "
-                    + "physics steps";
-            }
-
-            Check(results, bodyProblem == null, title + " kinematic Rigidbody",
-                label + " " + finger + " (" + joint.name + ") " + bodyProblem
-                + ". Re-run HexR > Auto Setup Scene.");
-
-            HapticFingerTrigger trigger = joint.GetComponent<HapticFingerTrigger>();
-            if (!Check(results, trigger != null, title + " component", label + " " + finger + " (" + joint.name + ") has no HapticFingerTrigger."))
-            {
-                return false;
-            }
-
-            bool configOk = trigger.fingertype == finger && trigger.handType == expectedTriggerHand;
-            return Check(results, configOk, title + " configured", label + " " + finger + " (" + joint.name + ")'s HapticFingerTrigger has the wrong fingertype/handType -- re-run Auto Set Up HexR.");
-        }
-
-        private static bool NameSuggestsHand(string name, HaptGloveHandler.HandType expected)
-        {
-            string n = name.ToLowerInvariant();
-            bool looksLeft = n.StartsWith("l_") || n.Contains("_l") || n.Contains("left");
-            bool looksRight = n.StartsWith("r_") || n.Contains("_r") || n.Contains("right");
-            return expected == HaptGloveHandler.HandType.Left ? !looksRight : !looksLeft;
-        }
-
-#if UNITY_EDITOR
-        [CustomEditor(typeof(HexRManager))]
-        public class HexRSettingEditorGUI : Editor
-        {
-            // Foldout open/closed state -- plain instance fields, not serialized. Resets to
-            // these defaults on reselection/domain reload, which is fine for editor-only UI
-            // state; Setup starts open since that's what you touch first on a fresh rig,
-            // the tuning/panel sections start collapsed since they're occasional-use.
-            private bool showSetup = true;
-            private bool showColliderTuning = false;
-            private bool showPanelUI = false;
-
-            public override void OnInspectorGUI()
-            {
-                HexRManager controller = (HexRManager)target;
-
-                showSetup = EditorGUILayout.BeginFoldoutHeaderGroup(showSetup, "XR Framework & Hand Physics");
-                if (showSetup)
-                {
-                    EditorGUI.indentLevel++;
-                    controller.XRFramework = (HexRManager.Options)EditorGUILayout.EnumPopup(
-                        new GUIContent("XR Framework", "Which hand-joint naming convention this rig reads -- not which headset it runs on. "
-                            + "OpenXR covers Unity XR Hands on any OpenXR runtime (Quest, PICO, Vive, SteamVR), because they all expose the same L_/R_ joint names. "
-                            + "MetaOVR is for Meta's own Interaction SDK skeleton. There is deliberately no PICO option: PICO is OpenXR."),
-                        controller.XRFramework);
-
-                    controller.isQuest = EditorGUILayout.Toggle(
-                        new GUIContent("Quest BLE Buffering", "Forwarded to both hands' HaptGloveHandler at Start, where it selects a Bluetooth write-buffering strategy inside HaptGlove.dll. "
-                            + "Correct for Quest, and on by default on both shipped rigs. UNTESTED on PICO: if a PICO build pairs with the glove but no haptics arrive, this is the first thing to turn off."),
-                        controller.isQuest);
-
-                    GUILayout.Space(4);
-                    controller.rightHand = (HaptGloveHandler)EditorGUILayout.ObjectField(
-                        new GUIContent("Right Hand Physics", "The right hand's HaptGloveHandler (glove/haptics object). Auto Setup finds this via GameObject.Find(\"Right Hand Physics\") and wires everything else -- colliders, panel, validation -- relative to it."),
-                        controller.rightHand, typeof(HaptGloveHandler), true);
-                    controller.leftHand = (HaptGloveHandler)EditorGUILayout.ObjectField(
-                        new GUIContent("Left Hand Physics", "The left hand's HaptGloveHandler (glove/haptics object). Auto Setup finds this via GameObject.Find(\"Left Hand Physics\") and wires everything else -- colliders, panel, validation -- relative to it."),
-                        controller.leftHand, typeof(HaptGloveHandler), true);
-
-                    if (controller.XRFramework == Options.OpenXR)
-                    {
-                        controller.HandMenu = (GameObject)EditorGUILayout.ObjectField(
-                            new GUIContent("HexR Hand Menu", "The hand-attached menu prefab used in OpenXR mode. Auto Setup re-parents an instance of it under the camera rig and reads its Bluetooth buttons/indicators from it -- only relevant when XR Framework is OpenXR."),
-                            controller.HandMenu, typeof(GameObject), true);
-                    }
-                    EditorGUI.indentLevel--;
-                }
-                EditorGUILayout.EndFoldoutHeaderGroup();
-
-                GUILayout.Space(6);
-
-                showColliderTuning = EditorGUILayout.BeginFoldoutHeaderGroup(showColliderTuning, "Fingertip & Palm Collider Tuning");
-                if (showColliderTuning)
-                {
-                    EditorGUI.indentLevel++;
-                    controller.FingertipColliderRadius = EditorGUILayout.FloatField(
-                        new GUIContent("Fingertip Collider Radius", "Radius of the sphere trigger collider Auto Setup adds to each fingertip on the raw tracked hand."),
-                        controller.FingertipColliderRadius);
-
-                    GUILayout.Space(4);
-                    EditorGUILayout.LabelField(
-                        new GUIContent("Fingertip Centers (Left)", "Local-space center offset of each left-hand fingertip's sphere collider, relative to that finger's own joint origin. Tune per-finger -- fingers aren't interchangeable and the rig isn't necessarily symmetric."),
-                        EditorStyles.boldLabel);
-                    DrawFingertipCenters(controller.LeftFingertipCenters);
-
-                    GUILayout.Space(5);
-                    EditorGUILayout.LabelField(
-                        new GUIContent("Fingertip Centers (Right)", "Same as Left, for the right hand. Tune independently -- the raw hand rig isn't guaranteed to be mirror-symmetric in local space, so left-hand values don't reliably carry over."),
-                        EditorStyles.boldLabel);
-                    DrawFingertipCenters(controller.RightFingertipCenters);
-
-                    GUILayout.Space(5);
-                    controller.PalmColliderSize = EditorGUILayout.Vector3Field(
-                        new GUIContent("Palm Collider Size", "Local-space box size of the trigger collider Auto Setup adds to the palm on the raw tracked hand."),
-                        controller.PalmColliderSize);
-                    EditorGUI.indentLevel--;
-                }
-                EditorGUILayout.EndFoldoutHeaderGroup();
-
-                GUILayout.Space(6);
-
-                showPanelUI = EditorGUILayout.BeginFoldoutHeaderGroup(showPanelUI, "HexR Panel UI Components");
-                if (showPanelUI)
-                {
-                    EditorGUI.indentLevel++;
-                    controller.BluetoothIndicatorL = (GameObject)EditorGUILayout.ObjectField(
-                        new GUIContent("Bluetooth Indicator L", "Visual indicator shown once the left glove is connected over Bluetooth."),
-                        controller.BluetoothIndicatorL, typeof(GameObject), true);
-                    controller.BluetoothIndicatorR = (GameObject)EditorGUILayout.ObjectField(
-                        new GUIContent("Bluetooth Indicator R", "Visual indicator shown once the right glove is connected over Bluetooth."),
-                        controller.BluetoothIndicatorR, typeof(GameObject), true);
-                    controller.pumpIndicator_L = (GameObject)EditorGUILayout.ObjectField(
-                        new GUIContent("Pump Indicator L", "Visual indicator shown while the left glove's air pump is actively running."),
-                        controller.pumpIndicator_L, typeof(GameObject), true);
-                    controller.pumpIndicator_R = (GameObject)EditorGUILayout.ObjectField(
-                        new GUIContent("Pump Indicator R", "Visual indicator shown while the right glove's air pump is actively running."),
-                        controller.pumpIndicator_R, typeof(GameObject), true);
-                    controller.LeftBtText = (TextMeshProUGUI)EditorGUILayout.ObjectField(
-                        new GUIContent("Left Bluetooth Text", "Status text on the HexR panel reflecting the left glove's connection state (e.g. \"Searching...\", \"Left Glove Connected\")."),
-                        controller.LeftBtText, typeof(TextMeshProUGUI), true);
-                    controller.RightBtText = (TextMeshProUGUI)EditorGUILayout.ObjectField(
-                        new GUIContent("Right Bluetooth Text", "Status text on the HexR panel reflecting the right glove's connection state (e.g. \"Searching...\", \"Right Glove Connected\")."),
-                        controller.RightBtText, typeof(TextMeshProUGUI), true);
-                    EditorGUI.indentLevel--;
-                }
-                EditorGUILayout.EndFoldoutHeaderGroup();
-
-                GUILayout.Space(15);
-
-                if (GUILayout.Button(new GUIContent("Auto Set Up HexR", "Finds and wires everything above automatically -- hand roots, panel UI, fingertip/palm colliders -- then runs Validate.")))
-                {
-                    AutoSetup(controller);
-                }
-                if (GUILayout.Button(new GUIContent("Validate HexR Setup", "Read-only check that everything above is wired correctly. Reports what's missing/misconfigured without changing anything -- safe to run any time.")))
-                {
-                    ValidateSetup(controller);
-                }
-
-                if (GUI.changed)
-                {
-                    EditorUtility.SetDirty(target);
-                }
-            }
-
-            // Thumb is shown too, but only used as a fallback -- if the rig has a
-            // "..._thumb_null" locator, Auto Setup uses that instead (see
-            // ResolveRawThumbCenterMarker / AutoAddFingerHapticsForHand).
-            private static void DrawFingertipCenters(FingertipCenters centers)
-            {
-                centers.Thumb = EditorGUILayout.Vector3Field(
-                    new GUIContent("Thumb", "Fallback center used only if the rig has no \"..._thumb_null\" locator -- when one exists, Auto Setup uses its position instead of this value."),
-                    centers.Thumb);
-                centers.Index = EditorGUILayout.Vector3Field(new GUIContent("Index", "Center offset for the index fingertip's sphere collider."), centers.Index);
-                centers.Middle = EditorGUILayout.Vector3Field(new GUIContent("Middle", "Center offset for the middle fingertip's sphere collider."), centers.Middle);
-                centers.Ring = EditorGUILayout.Vector3Field(new GUIContent("Ring", "Center offset for the ring fingertip's sphere collider."), centers.Ring);
-                centers.Little = EditorGUILayout.Vector3Field(new GUIContent("Little", "Center offset for the little (pinky) fingertip's sphere collider."), centers.Little);
-            }
-        }
-
-#endif
     }
 }

@@ -29,10 +29,6 @@ namespace HexR
         // should keep getting their version.
         private const string PrefabFolder = "Packages/com.microtube.hexr/Runtime/Prefabs/";
 
-        // The standalone panel, for adding to a scene that already has a rig. Resolved by fixed
-        // path rather than name search for the same reason as the rig prefabs above.
-        private const string PanelPrefabPath = "Packages/com.microtube.hexr/Runtime/UI/HexR Panel.prefab";
-
         // Deliberately NOT part of either rig prefab. HexRManager marks the rig
         // DontDestroyOnLoad, while HapticFingerTrigger, HexRGrabbable, ProximityCheck and
         // AutoSetup all resolve their tracker with GameObject.Find("Left/Right Pressure
@@ -45,48 +41,46 @@ namespace HexR
         // the PICO rig". There isn't one and there shouldn't be: PICO is OpenXR, so a separate
         // entry would instantiate this identical prefab with this identical Options value and
         // imply a PICO-specific rig exists.
-        [MenuItem("HexR/Create HexR Rig/Open XR (Quest, PICO, SteamVR)", false, 0)]
+        [MenuItem("HexR/Create HexR Rig/Open XR (Quest, PICO, SteamVR)", false, 20)]
         private static void CreateHexRRigOpenXR() => CreateHexRRig(OpenXRPrefabName, HexRManager.Options.OpenXR);
 
-        [MenuItem("HexR/Create HexR Rig/Meta OVR", false, 1)]
+        [MenuItem("HexR/Create HexR Rig/Meta OVR", false, 21)]
         private static void CreateHexRRigMetaOVR() => CreateHexRRig(MetaOVRPrefabName, HexRManager.Options.MetaOVR);
 
-        [MenuItem("HexR/Add HexR Panel", false, 2)]
-        private static void AddHexRPanel()
+        // One menu, built in code. Nothing is serialised, so there is no prefab to resolve, no
+        // foreign components to go missing, and no shader GUID to render magenta -- which is what
+        // the three panels this replaces each got wrong in their own way. The SDK-specific parts
+        // (making it grabbable, making its canvas pressable) go through the backend seam.
+        [MenuItem("HexR/Add HexR Menu", false, 23)]
+        private static void AddMenu()
         {
-            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PanelPrefabPath);
-            if (prefab == null)
+            if (HexRCompat.FindAny<HexRFloatingMenu>(true) != null)
             {
-                Debug.LogError($"[HexR] Could not load the HexR Panel prefab at \"{PanelPrefabPath}\" -- the package install may be incomplete or the prefab was moved.");
+                Debug.LogWarning("[HexR] This scene already has a HexR menu -- only one is needed; it rides the rig across scene loads.");
                 return;
             }
 
-            GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
-            Undo.RegisterCreatedObjectUndo(instance, "Add HexR Panel");
+            GameObject instance = new GameObject("HexR Floating Menu");
+            instance.AddComponent<HexRFloatingMenu>();
+            Undo.RegisterCreatedObjectUndo(instance, "Add Menu");
 
-            // HexRPanelConnectButtons finds HexRManager.Instance on its own at runtime
-            // regardless of parenting, so this is just a tidy default -- not required for
-            // the panel to work.
+            // Tidy default only -- the menu finds HexRManager itself at runtime whatever its parent.
             HexRManager controller = HexRCompat.FindAny<HexRManager>();
             if (controller != null)
             {
-                Undo.SetTransformParent(instance.transform, controller.transform, "Add HexR Panel");
-            }
-            else
-            {
-                Debug.LogWarning("[HexR] No HexRManager found in the open scene -- added the panel at the scene root. It will still self-connect once a HexRManager exists (e.g. after HexR > Create HexR Rig).");
+                Undo.SetTransformParent(instance.transform, controller.transform, "Add Menu");
             }
 
             Selection.activeGameObject = instance;
             EditorGUIUtility.PingObject(instance);
             EditorSceneManager.MarkSceneDirty(instance.scene);
-            Debug.Log("[HexR] Added HexR Panel to the scene.");
+            Debug.Log("[HexR] Added the HexR menu to the scene.");
         }
 
         // Separate from Create HexR Rig because it is per scene, not per rig: additional
         // scenes in a multi-scene setup each need their own, and they get the rig by way of
         // the DontDestroyOnLoad one already loaded.
-        [MenuItem("HexR/Add Pressure Controller", false, 3)]
+        [MenuItem("HexR/Add Pressure Controller", false, 22)]
         private static void AddPressureControllerMenu()
         {
             GameObject existing = FindPressureControllerInActiveScene();
@@ -108,7 +102,7 @@ namespace HexR
 
             Selection.activeGameObject = instance;
             EditorGUIUtility.PingObject(instance);
-            Debug.Log("[HexR] Added Pressure Controller to the scene. Run HexR > Auto Setup Scene to wire it to the hands.");
+            Debug.Log("[HexR] Added Pressure Controller to the scene. Run HexR > Troubleshoot > Re-run Auto Setup to wire it to the hands.");
         }
 
         // Left at the scene root on purpose -- parenting it under the rig would put it on the
@@ -164,7 +158,7 @@ namespace HexR
         // The one thing it cannot supply is the hand-tracking rig itself. That is backend SDK
         // content, which this package does not depend on, so the command says so at the end
         // rather than leaving you to wonder why the hands never appear.
-        [MenuItem("HexR/Create Demo Scene", false, 4)]
+        [MenuItem("HexR/Create Demo Scene", false, 0)]
         private static void CreateDemoScene()
         {
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
@@ -212,8 +206,8 @@ namespace HexR
                 + (picoAvailable && !metaAvailable
                     ? " On PICO that rig is an ordinary XR Origin with com.unity.xr.hands; the PICO plugin supplies the runtime, not the rig."
                     : string.Empty) + "\n"
-                + "  2. Run HexR > Auto Setup Scene again so it picks that rig up.\n"
-                + "  3. Run HexR > Validate Scene Setup, save the scene, then press Play.");
+                + "  2. Run HexR > Troubleshoot > Re-run Auto Setup again so it picks that rig up.\n"
+                + "  3. Run HexR > Troubleshoot > Validate Scene Setup, save the scene, then press Play.");
         }
 
         private static void CreateDemoFloor()
@@ -237,9 +231,14 @@ namespace HexR
             Rigidbody body = cube.AddComponent<Rigidbody>();
             body.useGravity = false;
 
+            // HexRGrabbable is deprecated, but HexR.Editor references neither SDK, so it cannot add
+            // an XRGrabInteractable or a Grabbable to build the recommended version of this demo.
+            // When HexRGrabbable is deleted, this demo moves into the backend satellites or goes.
+#pragma warning disable 618
             HexRGrabbable grabbable = cube.AddComponent<HexRGrabbable>();
             grabbable.TypeOfGrab = HexRGrabbable.Options.PalmGrab;
             grabbable.Gravity = HexRGrabbable.Option.On;
+#pragma warning restore 618
             grabbable.HapticStrength = 20f;
 
             // This is the part of the demo that matters most. On OpenXR a ProximityCheck is the
@@ -299,7 +298,7 @@ namespace HexR
             return false;
         }
 
-        [MenuItem("HexR/Auto Setup Scene", false, 20)]
+        [MenuItem("HexR/Troubleshoot/Re-run Auto Setup", false, 40)]
         private static void AutoSetupScene()
         {
             HexRManager controller = HexRCompat.FindAny<HexRManager>();
@@ -311,7 +310,7 @@ namespace HexR
 
             // Same logic as the Inspector's "Auto Set Up HexR" button (HexRManager.AutoSetup)
             // -- this just means you don't need to find and select that GameObject first.
-            HexRManager.AutoSetup(controller);
+            HexRAutoSetup.Run(controller);
 
             Selection.activeGameObject = controller.gameObject;
             EditorGUIUtility.PingObject(controller.gameObject);
@@ -320,13 +319,13 @@ namespace HexR
 
         // Grays out the menu item instead of letting it silently no-op when there's
         // nothing to set up.
-        [MenuItem("HexR/Auto Setup Scene", true)]
+        [MenuItem("HexR/Troubleshoot/Re-run Auto Setup", true)]
         private static bool ValidateAutoSetupScene()
         {
             return HexRCompat.FindAny<HexRManager>() != null;
         }
 
-        [MenuItem("HexR/Validate Scene Setup", false, 21)]
+        [MenuItem("HexR/Troubleshoot/Validate Scene Setup", false, 41)]
         private static void ValidateSceneSetup()
         {
             HexRManager controller = HexRCompat.FindAny<HexRManager>();
@@ -339,13 +338,13 @@ namespace HexR
             // Read-only -- reports what's missing/misconfigured without touching anything,
             // so this is safe to run on a scene Auto Setup Scene was never run on, or after
             // manual edits (e.g. a hand-root rewire) to check nothing broke.
-            HexRManager.ValidateSetup(controller);
+            HexRSetupValidator.Run(controller);
 
             Selection.activeGameObject = controller.gameObject;
             EditorGUIUtility.PingObject(controller.gameObject);
         }
 
-        [MenuItem("HexR/Validate Scene Setup", true)]
+        [MenuItem("HexR/Troubleshoot/Validate Scene Setup", true)]
         private static bool ValidateValidateSceneSetup()
         {
             return HexRCompat.FindAny<HexRManager>() != null;
@@ -386,7 +385,7 @@ namespace HexR
                 AddPressureController();
             }
 
-            HexRManager.AutoSetup(controller);
+            HexRAutoSetup.Run(controller);
 
             Selection.activeGameObject = instance;
             EditorGUIUtility.PingObject(instance);
@@ -408,7 +407,7 @@ namespace HexR
             "GhostIndex", "GhostMiddle", "GhostRing", "GhostPinky", "GhostThumb", "L_Palm", "R_Palm"
         };
 
-        [MenuItem("HexR/Migration/Remove Legacy Ghost-Rig Haptic Triggers", false, 40)]
+        [MenuItem("HexR/Migration/Remove Legacy Ghost-Rig Haptic Triggers", false, 60)]
         private static void RemoveLegacyGhostRigHapticTriggers()
         {
             RemoveLegacyHapticTriggersFromPrefab(MetaOVRPrefabName);
@@ -477,7 +476,7 @@ namespace HexR
         // PhysicsHandTracking degrades gracefully once HexrRoot is null (see MetaOVRStart/
         // OpenXRStart/*Update/*FixedUpdate's early-out guards) -- handRoot and everything the
         // new raw-hand haptics/grab system depends on are untouched.
-        [MenuItem("HexR/Migration/Remove Ghost Hand Rig", false, 41)]
+        [MenuItem("HexR/Migration/Remove Ghost Hand Rig", false, 61)]
         private static void RemoveGhostHandRig()
         {
             RemoveGhostHandRigFromPrefab(MetaOVRPrefabName);
@@ -601,7 +600,7 @@ namespace HexR
         private const string LegacyHaptGloveHandlerFileId = "-1140640302";
         private const string HaptGloveHandlerScriptGuid = "31d314e6cfab95f44b0183e301ce3bd7";
 
-        [MenuItem("HexR/Migration/Repoint HaptGlove Scripts To Source", false, 42)]
+        [MenuItem("HexR/Migration/Repoint HaptGlove Scripts To Source", false, 62)]
         private static void RepointHaptGloveScriptsToSource()
         {
             string legacy = $"m_Script: {{fileID: {LegacyHaptGloveHandlerFileId}, guid: {LegacyHaptGloveDllGuid}, type: 3}}";

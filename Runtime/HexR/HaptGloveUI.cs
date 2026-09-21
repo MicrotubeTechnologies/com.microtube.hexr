@@ -16,7 +16,6 @@ namespace HexR
         private TextMeshProUGUI RightBtText, LeftBtText;
         private HexRManager haptGloveManager;
 
-        private List<string> controlledHandsList = new List<string>();
 
         void Start()
         {
@@ -58,8 +57,6 @@ namespace HexR
                 return;
             }
 
-            controlledHandsList.Remove("Left");
-            controlledHandsList.Add("Right");
             if (RightBtText != null)
             {
                 RightBtText.text = "Searching for HexR Right…";
@@ -78,8 +75,6 @@ namespace HexR
                 return;
             }
 
-            controlledHandsList.Add("Left");
-            controlledHandsList.Remove("Right");
             if (LeftBtText != null)
             {
                 LeftBtText.text = "Searching for HexR Left…";

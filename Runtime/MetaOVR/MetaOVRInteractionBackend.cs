@@ -1,7 +1,10 @@
 using System.Collections.Generic;
 using System.Text;
 using Oculus.Interaction;
+using Oculus.Interaction.Grab;
+using Oculus.Interaction.HandGrab;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 namespace HexR.MetaOVR
 {
@@ -53,6 +56,60 @@ namespace HexR.MetaOVR
             return pointables.Count == 0 && wrappers.Count == 0
                 ? HexRInteractionBackends.Unbound
                 : new MetaOVRInteractionBinding(pointables, wrappers, sink);
+        }
+
+        public void MakeGrabbable(GameObject target)
+        {
+            Rigidbody body = target.GetComponent<Rigidbody>();
+
+            Grabbable grabbable = target.AddComponent<Grabbable>();
+            if (body != null)
+            {
+                grabbable.InjectOptionalRigidbody(body);
+            }
+
+            // HandGrabInteractable finds the Grabbable above as its own pointable element, so the
+            // only thing it has to be handed is the body.
+            HandGrabInteractable interactable = target.AddComponent<HandGrabInteractable>();
+            if (body != null)
+            {
+                interactable.InjectRigidbody(body);
+            }
+
+            interactable.InjectSupportedGrabTypes(GrabTypeFlags.All);
+        }
+
+        public bool IsGrabbed(GameObject target)
+        {
+            Grabbable grabbable = target != null ? target.GetComponent<Grabbable>() : null;
+            return grabbable != null && grabbable.SelectingPointsCount > 0;
+        }
+
+        public void MakeCanvasPointable(Canvas canvas)
+        {
+            if (canvas == null)
+            {
+                return;
+            }
+
+            if (canvas.GetComponent<PointableCanvas>() == null)
+            {
+                PointableCanvas pointable = canvas.gameObject.AddComponent<PointableCanvas>();
+                pointable.InjectAllPointableCanvas(canvas);
+            }
+
+            // The module is what turns pointer events into uGUI clicks, and it belongs on the
+            // EventSystem rather than the canvas -- one per scene, however many canvases there are.
+            EventSystem events = EventSystem.current;
+            if (events == null)
+            {
+                events = HexRCompat.FindAny<EventSystem>(true);
+            }
+
+            if (events != null && events.GetComponent<PointableCanvasModule>() == null)
+            {
+                events.gameObject.AddComponent<PointableCanvasModule>();
+            }
         }
 
         // Children matter here in a way they do not on the OpenXR side: the standard Meta authoring

@@ -54,7 +54,7 @@ namespace HexR.MetaOVR
             {
                 Debug.LogWarning("[HexR] " + name + ": no hand root to search for Meta interactors -- grab/poke "
                     + "haptics gating will stay off for this hand. Assign handGrabInteractor/pokeInteractor on the "
-                    + "Pressure Controller, set searchRoot, or re-run HexR > Auto Setup Scene.");
+                    + "Pressure Controller, set searchRoot, or re-run HexR > Troubleshoot > Re-run Auto Setup.");
                 return;
             }
 

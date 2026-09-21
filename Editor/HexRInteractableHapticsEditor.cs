@@ -163,7 +163,7 @@ namespace HexR
             {
                 EditorGUILayout.HelpBox(
                     "No Pressure Controllers in this scene, so this object will be grabbable but will "
-                    + "not be felt.\n\nRun HexR > Auto Setup Scene, or add a HexR rig.",
+                    + "not be felt.\n\nRun HexR > Troubleshoot > Re-run Auto Setup, or add a HexR rig.",
                     MessageType.Warning);
                 return;
             }

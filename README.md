@@ -99,7 +99,7 @@ that keeps its own `HaptGlove.dll` will collide with `HaptGlove.Runtime`.
 - `Runtime/Prefabs/` — the `HexR Main` rig prefabs, `Pressure Controller`, hand menu and
   grab audio. See below.
 - `Runtime/HaptGlove/` (assembly `HaptGlove.Runtime`) — the HaptGlove runtime:
-  `HaptGloveHandler`, `Haptics`, `Grasping`, the BLE transport and the encode/decode layer.
+  `HaptGloveHandler`, `Haptics`, the BLE transport and the encode/decode layer.
 - `Runtime/Plugins/` — the native Bluetooth transports the runtime binds to. See below.
 - `Editor/` (assembly `HexR.Editor`) — the `HexR` toolbar menu (`HexRMenu.cs`: Create HexR
   Rig, Create Demo Scene, Add HexR Panel, Auto Setup Scene, Validate Scene Setup, and one-off
@@ -109,7 +109,7 @@ that keeps its own `HaptGlove.dll` will collide with `HaptGlove.Runtime`.
 
 ## The HaptGlove runtime (`Runtime/HaptGlove/`)
 
-The `HaptGlove` runtime (`HaptGloveHandler`, `Haptics`, `Grasping`, BLE transport,
+The `HaptGlove` runtime (`HaptGloveHandler`, `Haptics`, BLE transport,
 encode/decode) ships as **source**, in the `HaptGlove.Runtime` assembly. It used to be a
 precompiled `HaptGlove.dll` built from the separate HexR Plugin repo; that binary was a
 `Debug` build, lagged the source it was built from, and could not be fixed from here, so

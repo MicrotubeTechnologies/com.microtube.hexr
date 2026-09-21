@@ -190,7 +190,7 @@ public class HaptGloveCollidersVisualizer : MonoBehaviour
         if (roots.Count == 0)
         {
             Debug.LogWarning("[HexR] " + name + ": nothing to visualize -- no HexRManager in the scene with hand "
-                + "roots assigned, and no extraRoots set. Run HexR > Validate Scene Setup to see what's missing.");
+                + "roots assigned, and no extraRoots set. Run HexR > Troubleshoot > Validate Scene Setup to see what's missing.");
             return;
         }
 

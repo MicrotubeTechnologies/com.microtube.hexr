@@ -10,6 +10,11 @@ using HaptGlove;
 
 namespace HexR
 {
+    [Obsolete("HexRGrabbable is superseded by HexRInteractableHaptics, which puts HexR haptics on " +
+        "your SDK's own interactable -- XRGrabInteractable on OpenXR, Grabbable/HandGrabInteractable " +
+        "on Meta -- instead of running a second, HexR-only grab underneath it. Objects authored that " +
+        "way can be grabbed and tested without gloves, and behave the same on both backends. " +
+        "HexRGrabbable still works and will be removed in a future release.")]
     public class HexRGrabbable : MonoBehaviour
     {
         public enum Options { PinchGrab, PalmGrab }

@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
+using UnityEngine.XR.Interaction.Toolkit.UI;
 
 namespace HexR.OpenXR
 {
@@ -37,6 +38,36 @@ namespace HexR.OpenXR
             return interactables.Length == 0
                 ? HexRInteractionBackends.Unbound
                 : new OpenXRInteractionBinding(interactables, sink);
+        }
+
+        public void MakeGrabbable(GameObject target)
+        {
+            XRGrabInteractable grab = target.AddComponent<XRGrabInteractable>();
+            grab.movementType = XRBaseInteractable.MovementType.Instantaneous;
+            grab.trackPosition = true;
+            grab.trackRotation = true;
+
+            // Grab it where you took hold of it rather than snapping it into your palm, and leave
+            // it exactly where it was let go -- a menu that drifts off after you place it is worse
+            // than one that never moved.
+            grab.useDynamicAttach = true;
+            grab.attachEaseInTime = 0f;
+            grab.throwOnDetach = false;
+            grab.retainTransformParent = true;
+        }
+
+        public bool IsGrabbed(GameObject target)
+        {
+            XRGrabInteractable grab = target != null ? target.GetComponent<XRGrabInteractable>() : null;
+            return grab != null && grab.isSelected;
+        }
+
+        public void MakeCanvasPointable(Canvas canvas)
+        {
+            if (canvas != null && canvas.GetComponent<TrackedDeviceGraphicRaycaster>() == null)
+            {
+                canvas.gameObject.AddComponent<TrackedDeviceGraphicRaycaster>();
+            }
         }
 
         // Includes the object itself. Children matter because the common XRI authoring puts the

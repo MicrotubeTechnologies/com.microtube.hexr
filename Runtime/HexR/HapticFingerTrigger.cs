@@ -101,7 +101,7 @@ namespace HexR
             if (HexrLeftOrRight == null)
             {
                 Debug.LogError("[HexR] " + name + " (" + handType + " " + fingertype + "): HexrLeftOrRight is not "
-                    + "assigned, so this trigger has no glove to send to. Re-run HexR > Auto Setup Scene.");
+                    + "assigned, so this trigger has no glove to send to. Re-run HexR > Troubleshoot > Re-run Auto Setup.");
             }
             else
             {
