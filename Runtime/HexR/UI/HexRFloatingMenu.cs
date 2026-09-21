@@ -84,6 +84,11 @@ public class HexRFloatingMenu : MonoBehaviour
     private const float k_HeaderHeight = 46f;
     private const float k_SectionLabelHeight = 24f;
     private const float k_ButtonHeight = 44f;
+
+    // Depth of each button's press volume, in panel pixels. 360px is panelWidth metres, so at
+    // the default 0.26m this is about 2cm -- deep enough that a fingertip moving at a normal
+    // speed cannot tunnel through it between two physics frames.
+    private const float k_PressDepthPx = 30f;
     private const float k_GridButtonHeight = 34f;
     private const float k_GridGap = 5f;
     private const float k_StatusHeight = 20f;
@@ -1071,6 +1076,7 @@ public class HexRFloatingMenu : MonoBehaviour
         button.colors = colors;
 
         button.onClick.AddListener(onClick);
+        AddPhysicalPress(image, width, height, color, onClick);
 
         label = NewLabel("Label", image.rectTransform, text, fontSize, FontStyles.Normal, k_Text,
             TextAlignmentOptions.Center);
@@ -1089,6 +1095,43 @@ public class HexRFloatingMenu : MonoBehaviour
     /// Button tinting multiplies the target graphic's own colour, so the highlight and pressed
     /// states have to be expressed relative to it rather than as flat colours.
     /// </summary>
+    /// <summary>
+    /// Gives a canvas button a press volume a finger can actually enter.
+    ///
+    /// The canvas stays purely visual. Pressing it through uGUI would need a raycaster, an input
+    /// module and an interactor emitting a ray or poke -- three things that differ per backend and
+    /// that, on a Meta rig without them, leave a panel that renders perfectly and does nothing.
+    /// A trigger collider plus HexR's own fingertips needs none of that, so the same menu is
+    /// pressable on every backend.
+    ///
+    /// The collider is centred rather than pushed to the front face, so it catches a finger
+    /// arriving from either side -- worth doing because which way a world-space canvas faces
+    /// depends on how the panel was oriented, and getting it backwards would silently halve the
+    /// hit volume.
+    /// </summary>
+    private void AddPhysicalPress(Image image, float width, float height, Color baseColor,
+        UnityEngine.Events.UnityAction onClick)
+    {
+        BoxCollider box = image.gameObject.AddComponent<BoxCollider>();
+        box.isTrigger = true;
+        // Local units here are panel pixels; the canvas scale converts them to metres.
+        box.size = new Vector3(width, height, k_PressDepthPx);
+
+        HexRPhysicalButton press = image.gameObject.AddComponent<HexRPhysicalButton>();
+
+        // No cap travel: the visual feedback is the colour tint below. Travel is expressed in
+        // metres, and this transform lives in pixel space, so a sensible metre value would move
+        // the button clean off the panel.
+        press.travel = 0f;
+        press.pressPressure = 35f;
+        press.onPressed.AddListener(onClick);
+
+        // uGUI's own ColorTint never fires, because nothing is sending pointer events.
+        Color pressed = Multiply(k_ButtonPressed, baseColor);
+        press.onPressed.AddListener(() => image.color = pressed);
+        press.onReleased.AddListener(() => image.color = baseColor);
+    }
+
     private static Color Multiply(Color wanted, Color baseColor)
     {
         return new Color(
