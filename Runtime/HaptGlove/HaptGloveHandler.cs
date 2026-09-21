@@ -345,6 +345,25 @@ namespace HaptGlove
         private bool deviceSelectionDirty = false;
         private string DeviceSelectionKey => "HexR_" + whichHand + "_DeviceId";
 
+        /// <summary>
+        /// Chatter for diagnosing a glove that will not connect. Off by one flag when it has
+        /// served its purpose.
+        ///
+        /// Everything it prints is prefixed [HexR-BLE] and tagged with the hand, because the two
+        /// hands run independent connect campaigns and their messages interleave -- reading a
+        /// device log without the tag is how "pressing Right" and "Left not found" end up looking
+        /// like the same event.
+        /// </summary>
+        public static bool VerboseBle = true;
+
+        private void BleLog(string message)
+        {
+            if (VerboseBle)
+            {
+                Debug.Log("[HexR-BLE][" + whichHand + "] " + message);
+            }
+        }
+
         public string GetRememberedDeviceId() => rememberedDeviceId;
 
         public void RememberDevice(string deviceId)
@@ -598,6 +617,10 @@ namespace HaptGlove
             {
                 btHelper.setDeviceName(targetDeviceName);
             }
+            BleLog("BTConnection: name=\"" + targetDeviceName + "\" address=\""
+                + targetDeviceAddress + "\" remembered=\"" + rememberedDeviceId
+                + "\" bleConnected=" + bleConnected + " connectRequested=" + connectRequested
+                + " retryAttempt=" + retryAttempt);
             Debug.Log("BTConnection");
             if (bleConnected)
             {
@@ -652,6 +675,8 @@ namespace HaptGlove
                 try
                 {
                     resolvable = btHelper.isDevicePaired();
+                    BleLog("isDevicePaired=" + resolvable + " -- "
+                        + (resolvable ? "connecting directly" : "scanning first"));
                 }
                 catch (Exception e)
                 {
@@ -683,6 +708,7 @@ namespace HaptGlove
                 return;
             }
 
+            BleLog("starting an 8s scan for \"" + targetDeviceName + "\"");
             btText = "BLE Start Scanning for: " + targetDeviceName;
             PluginScan(
                 started =>
@@ -697,6 +723,9 @@ namespace HaptGlove
                     // Connect() here -- as this used to -- can only throw, because devicePaired
                     // goes true only once a scan has populated the shared cache, and we already
                     // know it is false. Wait and retry instead.
+                    BleLog("SCAN REFUSED -- the plugin is already scanning. Its isScanning flag "
+                        + "and device cache are static across both hands, so this is the other "
+                        + "hand holding the radio. Retrying.");
                     btText = "Bluetooth busy, retrying shortly...";
                     ScheduleRetry();
                 },
@@ -770,6 +799,8 @@ namespace HaptGlove
         // subscribers hear about it and the same retry path takes over.
         private void OnConnectThrew(Exception e)
         {
+            BleLog("Connect threw: " + e.Message + " -- this means the helper had no resolved "
+                + "device, i.e. the scan above did not match the target.");
             Debug.Log("Connect threw: " + e.Message);
             OnConnectionFailed(btHelper);
         }
@@ -778,10 +809,35 @@ namespace HaptGlove
         {
             btText = "BLE Scan Ended";
 
+            // The whole scan result, named. Until now nothing logged this, so a scan that ended
+            // without the glove was indistinguishable from a scan that never ran -- and the
+            // failure that follows ("Bluetooth is not ready") only says Connect had no target,
+            // not why. If the glove is powered on and still absent from this list, the problem
+            // is advertising or range; if it is present under a different name, it is the match.
+            int count = devices == null ? 0 : devices.Count;
+            BleLog("scan ended: " + count + " device(s); looking for name \"" + targetDeviceName
+                + "\"" + (string.IsNullOrEmpty(targetDeviceAddress)
+                    ? "" : ", or address \"" + targetDeviceAddress + "\""));
+
+            if (devices != null)
+            {
+                foreach (BluetoothDevice device in devices)
+                {
+                    bool nameHit = !string.IsNullOrEmpty(device.DeviceName)
+                                   && device.DeviceName.Contains(targetDeviceName);
+                    bool addrHit = !string.IsNullOrEmpty(targetDeviceAddress)
+                                   && device.DeviceAddress == targetDeviceAddress;
+                    BleLog("   saw \"" + device.DeviceName + "\" [" + device.DeviceAddress + "]"
+                        + (nameHit ? "  <- NAME MATCH" : "") + (addrHit ? "  <- ADDRESS MATCH" : ""));
+                }
+            }
+
             foreach (BluetoothDevice device in devices)
             {
                 onDeviceFound?.Invoke(device.DeviceAddress, device.DeviceName);
             }
+
+            BleLog("isDevicePaired=" + helper.isDevicePaired() + " bleConnected=" + bleConnected);
 
             if (helper.isDevicePaired() & !bleConnected)
             {

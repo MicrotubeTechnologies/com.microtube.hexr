@@ -135,6 +135,11 @@ namespace HexR
                 return false;
             }
 
+            // Which press started which campaign. Both hands retry independently once started,
+            // so without this the log cannot tell a fresh press from a retry of an older one --
+            // which is what makes a Left failure look like the answer to a Right press.
+            Debug.Log("[HexR-BLE] connect slot claimed by " + hand + " (press)");
+
             if (hand == HaptGloveHandler.HandType.Left)
             {
                 leftConnectInFlight = true;
