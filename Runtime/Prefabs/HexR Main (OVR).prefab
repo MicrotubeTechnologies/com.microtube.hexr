@@ -7036,6 +7036,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: HexR.Runtime::HexRFloatingMenu
   spawnDistance: 0.65
   spawnHeightOffset: -0.2
+  spawnSideOffset: -0.35
   recallDistance: 4
   panelWidth: 0.26
+  recenterOnStart: 1
   hideHandMenu: 1
+  hideSceneSelector: 1
+  previewInEditor: 1

@@ -46,6 +46,11 @@ public class HexRFloatingMenu : MonoBehaviour
     [Tooltip("How far below eye level the panel is placed, in metres. Negative is down.")]
     public float spawnHeightOffset = -0.2f;
 
+    [Tooltip("Sideways offset from the user, in metres. Negative is to the left. Off to one side " +
+             "by default: a panel directly in front is in the way of whatever you are doing, and " +
+             "it is where people drag it to anyway.")]
+    public float spawnSideOffset = -0.35f;
+
     [Tooltip("If the panel ends up further than this from the head it comes back in front of you, " +
              "so it cannot be pushed somewhere unreachable. Zero disables the recall.")]
     public float recallDistance = 4f;
@@ -191,6 +196,7 @@ public class HexRFloatingMenu : MonoBehaviour
 
         if (recenterOnStart)
         {
+            pendingRecenter = true;
             Recenter();
         }
     }
@@ -275,9 +281,18 @@ public class HexRFloatingMenu : MonoBehaviour
 
         if (head == null)
         {
-            // The camera arrives a frame or two after a load on device.
-            head = Camera.main != null ? Camera.main.transform : null;
-            return;
+            // The camera arrives a frame or two after a load on device -- later still on Meta,
+            // where the eye anchors are enabled after Start.
+            head = ResolveHead();
+            if (head == null)
+            {
+                return;
+            }
+        }
+
+        if (pendingRecenter)
+        {
+            Recenter();
         }
 
         // Not while it is being held. A ray interactor can push the panel well past the recall
@@ -300,7 +315,7 @@ public class HexRFloatingMenu : MonoBehaviour
     {
         if (head == null)
         {
-            head = Camera.main != null ? Camera.main.transform : null;
+            head = ResolveHead();
             if (head == null)
             {
                 return;
@@ -316,8 +331,43 @@ public class HexRFloatingMenu : MonoBehaviour
         }
 
         forward.Normalize();
-        transform.position = head.position + forward * spawnDistance + Vector3.up * spawnHeightOffset;
-        transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
+
+        // Flattened right, so the side offset stays level whatever the head is doing.
+        Vector3 right = Vector3.Cross(Vector3.up, forward);
+
+        transform.position = head.position
+                           + forward * spawnDistance
+                           + right * spawnSideOffset
+                           + Vector3.up * spawnHeightOffset;
+
+        // Face the user rather than simply aligning with their forward. With no side offset the
+        // two are identical, so placement straight ahead is unchanged; offset to one side, this is
+        // what keeps the panel readable instead of leaving it edge-on.
+        Vector3 facing = transform.position - head.position;
+        facing.y = 0f;
+        if (facing.sqrMagnitude < 0.0001f)
+        {
+            facing = forward;
+        }
+
+        transform.rotation = Quaternion.LookRotation(facing.normalized, Vector3.up);
+        pendingRecenter = false;
+    }
+
+    /// <summary>
+    /// The user's head. Camera.main first, but not only: it returns the first *enabled* camera
+    /// tagged MainCamera, and a rig that enables its eye anchors late -- or tags them differently
+    /// -- would leave the panel wherever it was authored forever.
+    /// </summary>
+    private static Transform ResolveHead()
+    {
+        if (Camera.main != null)
+        {
+            return Camera.main.transform;
+        }
+
+        Camera any = HexRCompat.FindAny<Camera>();
+        return any != null ? any.transform : null;
     }
 
     // ---------------------------------------------
@@ -840,6 +890,12 @@ public class HexRFloatingMenu : MonoBehaviour
     }
 
     private IHexRInteractionBackend cachedBackend;
+
+    // Set when a recentre was asked for but the camera was not up yet. Without this the
+    // panel sits wherever it was authored -- on a rig-parented menu, that is the floor --
+    // because the only other caller of Recenter is the recall check, which needs the user to
+    // walk recallDistance away before it fires.
+    private bool pendingRecenter;
 
     // ---------------------------------------------
     // Scene view preview
