@@ -30,6 +30,14 @@ using UnityEngine.UI;
 ///
 /// It survives scene loads on purpose. Switching scenes is one of the things the menu is for, so
 /// it keeps its place across the load rather than reappearing in front of your face each time.
+///
+/// It never moves itself. The panel sits where the scene puts it and stays there -- it does not
+/// place itself relative to the head at startup, and it does not chase the user around the room.
+/// Earlier versions did both, and both were wrong for the same reason: the position is a decision
+/// someone already made, in the Scene view or by reaching out and dragging the panel, and the only
+/// thing head-relative placement can do to a decision like that is undo it. Standing across the
+/// room from the menu is a normal thing to do, not a sign it has been lost. <see cref="Recenter"/>
+/// is still here for anything that wants to ask for the panel explicitly.
 /// </summary>
 [ExecuteAlways]
 [DisallowMultipleComponent]
@@ -51,18 +59,9 @@ public class HexRFloatingMenu : MonoBehaviour
              "it is where people drag it to anyway.")]
     public float spawnSideOffset = -0.35f;
 
-    [Tooltip("If the panel ends up further than this from the head it comes back in front of you, " +
-             "so it cannot be pushed somewhere unreachable. Zero disables the recall, and so does " +
-             "unticking Recenter On Start -- a panel you placed by hand stays where you put it.")]
-    public float recallDistance = 4f;
-
     [Header("Panel")]
     [Tooltip("Panel width in metres. Height follows from the contents.")]
     public float panelWidth = 0.32f;
-
-    [Tooltip("Put the panel in front of the user when the scene starts. Untick to leave it exactly " +
-             "where it sits in the scene -- which is what the Scene view preview is showing you.")]
-    public bool recenterOnStart = true;
 
     [Header("Behaviour")]
     [Tooltip("Switch the old wrist menu off. Untick to run both while comparing them.")]
@@ -203,12 +202,6 @@ public class HexRFloatingMenu : MonoBehaviour
         }
 
         AdoptScene();
-
-        if (recenterOnStart)
-        {
-            pendingRecenter = true;
-            Recenter();
-        }
     }
 
     private void OnDestroy()
@@ -282,50 +275,13 @@ public class HexRFloatingMenu : MonoBehaviour
         AdoptScene();
     }
 
-    private void Update()
-    {
-        if (!Application.isPlaying)
-        {
-            return;
-        }
-
-        if (head == null)
-        {
-            // The camera arrives a frame or two after a load on device -- later still on Meta,
-            // where the eye anchors are enabled after Start.
-            head = ResolveHead();
-            if (head == null)
-            {
-                return;
-            }
-        }
-
-        if (pendingRecenter)
-        {
-            Recenter();
-        }
-
-        // Not while it is being held. A ray interactor can push the panel well past the recall
-        // distance and still be holding it, and snapping it back out of the user's grip mid-push
-        // is the one way this safety net could make things worse.
-        if (Backend() != null && Backend().IsGrabbed(gameObject))
-        {
-            return;
-        }
-
-        // Only patrol for a lost panel if the panel places itself in the first place. With
-        // recenterOnStart off the position is authored -- someone chose that spot -- and a recall
-        // would quietly move it the moment the user stood more than recallDistance away, which on
-        // a fixed panel is a normal thing to do rather than a sign it has been lost.
-        if (recenterOnStart
-            && recallDistance > 0f
-            && Vector3.Distance(transform.position, head.position) > recallDistance)
-        {
-            Recenter();
-        }
-    }
-
-    /// <summary>Puts the panel back in front of the user, facing them. Safe to call any time.</summary>
+    /// <summary>
+    /// Puts the panel in front of the user, facing them. Safe to call any time.
+    ///
+    /// Nothing calls this on its own. It is here for a button, a key or a script that wants a
+    /// "bring the menu to me" action -- not for the panel to invoke on the user's behalf. See the
+    /// class summary for why.
+    /// </summary>
     public void Recenter()
     {
         if (head == null)
@@ -366,7 +322,6 @@ public class HexRFloatingMenu : MonoBehaviour
         }
 
         transform.rotation = Quaternion.LookRotation(facing.normalized, Vector3.up);
-        pendingRecenter = false;
     }
 
     /// <summary>
@@ -905,12 +860,6 @@ public class HexRFloatingMenu : MonoBehaviour
     }
 
     private IHexRInteractionBackend cachedBackend;
-
-    // Set when a recentre was asked for but the camera was not up yet. Without this the
-    // panel sits wherever it was authored -- on a rig-parented menu, that is the floor --
-    // because the only other caller of Recenter is the recall check, which needs the user to
-    // walk recallDistance away before it fires.
-    private bool pendingRecenter;
 
     // ---------------------------------------------
     // Scene view preview

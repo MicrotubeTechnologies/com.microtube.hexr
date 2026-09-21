@@ -61,7 +61,7 @@ namespace HexR
             }
 
             GameObject instance = new GameObject("HexR Floating Menu");
-            instance.AddComponent<HexRFloatingMenu>();
+            HexRFloatingMenu menu = instance.AddComponent<HexRFloatingMenu>();
             Undo.RegisterCreatedObjectUndo(instance, "Add Menu");
 
             // Tidy default only -- the menu finds HexRManager itself at runtime whatever its parent.
@@ -71,11 +71,50 @@ namespace HexR
                 Undo.SetTransformParent(instance.transform, controller.transform, "Add Menu");
             }
 
+            PlaceForAuthoring(instance.transform, controller, menu);
+
             Selection.activeGameObject = instance;
             EditorGUIUtility.PingObject(instance);
             EditorSceneManager.MarkSceneDirty(instance.scene);
             Debug.Log("[HexR] Added the HexR menu to the scene.");
         }
+
+        // The panel does not place itself at runtime -- it stays exactly where the scene puts it --
+        // so where it lands here is where the user will find it, and a new GameObject lands at the
+        // origin, which on a floor-level rig is under their feet. This puts it within reach at eye
+        // height so it can be seen, read and dragged somewhere better, which is the whole workflow.
+        private static void PlaceForAuthoring(Transform panel, HexRManager controller, HexRFloatingMenu menu)
+        {
+            // The rig if there is one, otherwise world origin: either way a floor-level reference,
+            // which is why the height is added rather than taken from it.
+            Transform rig = controller != null ? controller.transform : null;
+            Vector3 origin = rig != null ? rig.position : Vector3.zero;
+            Vector3 forward = rig != null ? Vector3.ProjectOnPlane(rig.forward, Vector3.up) : Vector3.forward;
+            if (forward.sqrMagnitude < 0.0001f)
+            {
+                forward = Vector3.forward;
+            }
+
+            forward.Normalize();
+            Vector3 right = Vector3.Cross(Vector3.up, forward);
+
+            panel.position = origin
+                           + forward * menu.spawnDistance
+                           + right * menu.spawnSideOffset
+                           + Vector3.up * (k_AuthoringEyeHeight + menu.spawnHeightOffset);
+
+            // Face back towards where the user will be standing, so it is readable on the first
+            // frame rather than edge-on.
+            Vector3 facing = panel.position - origin;
+            facing.y = 0f;
+            panel.rotation = facing.sqrMagnitude < 0.0001f
+                ? Quaternion.LookRotation(forward, Vector3.up)
+                : Quaternion.LookRotation(facing.normalized, Vector3.up);
+        }
+
+        // Standing eye height, near enough. The scene cannot know the user's, and guessing low is
+        // the safer error: a panel slightly below eye line is still reachable.
+        private const float k_AuthoringEyeHeight = 1.6f;
 
         // Separate from Create HexR Rig because it is per scene, not per rig: additional
         // scenes in a multi-scene setup each need their own, and they get the rig by way of
