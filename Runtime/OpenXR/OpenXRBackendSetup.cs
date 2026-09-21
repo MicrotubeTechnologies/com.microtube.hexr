@@ -37,6 +37,11 @@ namespace HexR.OpenXR
             // unsubscribe first so the wiring can't be invoked twice per AutoSetup.
             HexRManager.PressureTrackerBackendSetup -= Wire;
             HexRManager.PressureTrackerBackendSetup += Wire;
+
+            // Announce the interaction adapter too, so HexRInteractableHaptics can be driven by
+            // XRI without HexR.Runtime referencing it. Register is idempotent, so the repeat from
+            // a domain reload is harmless.
+            HexRInteractionBackends.Register(new OpenXRInteractionBackend());
         }
 
         private static void Wire(PressureTrackerMain tracker, Transform handRoot, string label)
