@@ -279,14 +279,11 @@ namespace HexR
             Rigidbody body = cube.AddComponent<Rigidbody>();
             body.useGravity = false;
 
-            // HexRGrabbable is deprecated, but HexR.Editor references neither SDK, so it cannot add
-            // an XRGrabInteractable or a Grabbable to build the recommended version of this demo.
-            // When HexRGrabbable is deleted, this demo moves into the backend satellites or goes.
-#pragma warning disable 618
+            // HexR's own grab, which needs no interaction SDK -- and HexR.Editor references
+            // neither, so it could not add an XRGrabInteractable or a Grabbable here anyway.
             HexRGrabbable grabbable = cube.AddComponent<HexRGrabbable>();
             grabbable.TypeOfGrab = HexRGrabbable.Options.PalmGrab;
             grabbable.Gravity = HexRGrabbable.Option.On;
-#pragma warning restore 618
             grabbable.HapticStrength = 20f;
 
             // This is the part of the demo that matters most. On OpenXR a ProximityCheck is the

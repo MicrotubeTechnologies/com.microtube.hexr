@@ -18,12 +18,11 @@ namespace HexR
     /// installed. That is why one component can serve both, and why this file compiles in a project
     /// with neither.
     ///
-    /// Contrast with <see cref="HexRGrabbable"/>. That component runs its own physics-based grab off
-    /// the glove's finger colliders and writes straight to the glove, bypassing
-    /// <see cref="PressureTrackerMain"/> entirely. It works, but it means the object is grabbable
-    /// *only* by a HexR hand -- so the app can't be built or tested without gloves, and it behaves
-    /// differently from every other interactable in the scene. HexRGrabbable is deprecated and
-    /// will be removed; this is the path for all new work.
+    /// The alternative is <see cref="HexRGrabbable"/>, HexR's own grab. That component runs a
+    /// physics-based grab off the glove's finger colliders and writes straight to the glove,
+    /// bypassing <see cref="PressureTrackerMain"/>. It needs no interaction SDK, but the object is
+    /// grabbable only by a HexR hand. This component is the one to use when the object should also
+    /// grab without gloves and behave like every other interactable in the scene.
     ///
     /// Haptics still only fire while <c>PressureTrackerMain.IsHandNear()</c> is true. The hand-near
     /// source on each Pressure Controller is what makes that true from the SDK's own grab and poke

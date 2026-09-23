@@ -10,11 +10,16 @@ using HaptGlove;
 
 namespace HexR
 {
-    [Obsolete("HexRGrabbable is superseded by HexRInteractableHaptics, which puts HexR haptics on " +
-        "your SDK's own interactable -- XRGrabInteractable on OpenXR, Grabbable/HandGrabInteractable " +
-        "on Meta -- instead of running a second, HexR-only grab underneath it. Objects authored that " +
-        "way can be grabbed and tested without gloves, and behave the same on both backends. " +
-        "HexRGrabbable still works and will be removed in a future release.")]
+    /// <summary>
+    /// HexR's own grab: the object is picked up by the glove's finger and palm colliders closing
+    /// on it, pinch or palm, and the haptics are sent straight to the glove as the fingers touch.
+    ///
+    /// One of two grab mechanisms, not a legacy one. <see cref="HexRInteractableHaptics"/> is the
+    /// other: it adds HexR haptics to your SDK's own interactable (XRGrabInteractable on OpenXR,
+    /// Grabbable/HandGrabInteractable on Meta), so the object also grabs without gloves and like
+    /// everything else in the scene. Use this one where the grab should come from the HexR hand
+    /// itself -- it needs a Rigidbody and a trigger collider, and no interaction SDK at all.
+    /// </summary>
     public class HexRGrabbable : MonoBehaviour
     {
         public enum Options { PinchGrab, PalmGrab }
