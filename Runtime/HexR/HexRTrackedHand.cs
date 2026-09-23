@@ -37,6 +37,13 @@ namespace HexR
         // either the mesh root (OpenXRLeftHand) or the wrist itself.
         private const string MetaOpenXRPrefix = "XRHand_";
 
+        // True for a joint on Meta's skeleton, false for Unity XR Hands'. The two need different
+        // collider placement (see HexRManager's fingertip centers).
+        public static bool IsMetaJoint(Transform joint)
+        {
+            return joint != null && joint.name.StartsWith(MetaOpenXRPrefix);
+        }
+
         private string HandPrefix
         {
             get { return handType == HandType.Left ? "L_" : "R_"; }

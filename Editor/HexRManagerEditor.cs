@@ -67,13 +67,13 @@ namespace HexR
 
                 GUILayout.Space(4);
                 EditorGUILayout.LabelField(
-                    new GUIContent("Fingertip Centers (Left)", "Local-space center offset of each left-hand fingertip's sphere collider, relative to that finger's own joint origin. Tune per-finger -- fingers aren't interchangeable and the rig isn't necessarily symmetric."),
+                    new GUIContent("Fingertip Centers (Left, Meta)", "Local-space center offset of each left-hand fingertip's sphere collider, relative to that finger's own joint origin. Tune per-finger -- fingers aren't interchangeable and the rig isn't necessarily symmetric."),
                     EditorStyles.boldLabel);
                 DrawFingertipCenters(controller.LeftFingertipCenters);
 
                 GUILayout.Space(5);
                 EditorGUILayout.LabelField(
-                    new GUIContent("Fingertip Centers (Right)", "Same as Left, for the right hand. Tune independently -- the raw hand rig isn't guaranteed to be mirror-symmetric in local space, so left-hand values don't reliably carry over."),
+                    new GUIContent("Fingertip Centers (Right, Meta)", "Same as Left, for the right hand. Tune independently -- the raw hand rig isn't guaranteed to be mirror-symmetric in local space, so left-hand values don't reliably carry over."),
                     EditorStyles.boldLabel);
                 DrawFingertipCenters(controller.RightFingertipCenters);
 
@@ -81,6 +81,17 @@ namespace HexR
                 controller.PalmColliderSize = EditorGUILayout.Vector3Field(
                     new GUIContent("Palm Collider Size", "Local-space box size of the trigger collider Auto Setup adds to the palm on the raw tracked hand."),
                     controller.PalmColliderSize);
+
+                GUILayout.Space(8);
+                EditorGUILayout.LabelField(
+                    new GUIContent("XR Hands skeleton (PICO, OpenXR)", "Used instead of the values above when the tracked hand is Unity XR Hands' L_*/R_* skeleton rather than Meta's XRHand_* one. Its joint axes differ, so the offsets do too."),
+                    EditorStyles.boldLabel);
+                EditorGUILayout.LabelField("Fingertip Centers (Left)");
+                DrawFingertipCenters(controller.XRHandsLeftFingertipCenters);
+                EditorGUILayout.LabelField("Fingertip Centers (Right)");
+                DrawFingertipCenters(controller.XRHandsRightFingertipCenters);
+                controller.XRHandsPalmColliderCenter = EditorGUILayout.Vector3Field("Palm Collider Center", controller.XRHandsPalmColliderCenter);
+                controller.XRHandsPalmColliderSize = EditorGUILayout.Vector3Field("Palm Collider Size", controller.XRHandsPalmColliderSize);
                 EditorGUI.indentLevel--;
             }
             EditorGUILayout.EndFoldoutHeaderGroup();

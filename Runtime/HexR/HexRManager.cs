@@ -86,6 +86,37 @@ namespace HexR
         [Tooltip("Local-space size (x/y/z) of the box trigger collider Auto Setup adds to the palm on the raw tracked hand.")]
         public Vector3 PalmColliderSize = new Vector3(0.06f, 0.017f, 0.065f);
 
+        // The values above are for Meta's XRHand_* skeleton. Unity XR Hands' L_*/R_* skeleton
+        // (PICO, and other OpenXR runtimes using XRI's hands) has different joint axes and
+        // needs its own. Its joints aren't mirrored between hands either -- +Z runs toward the
+        // fingertip and -Y toward the palm on both -- so each hand's tips sit a few mm toward
+        // the pad and behind the tip joint. These are the per-finger positions of the ghost-hand
+        // triggers the PICO tutorial was tuned with, re-expressed against the tracked tip joint
+        // (the ghost copied the tracked hand's joint poses, so the frames are the same).
+        public FingertipCenters XRHandsLeftFingertipCenters = new FingertipCenters
+        {
+            Thumb = new Vector3(0.0010f, -0.0009f, -0.0079f),
+            Index = new Vector3(-0.0001f, -0.0051f, -0.0070f),
+            Middle = new Vector3(-0.0005f, -0.0059f, -0.0077f),
+            Ring = new Vector3(-0.0002f, -0.0034f, -0.0032f),
+            Little = new Vector3(-0.0009f, -0.0051f, -0.0071f),
+        };
+
+        public FingertipCenters XRHandsRightFingertipCenters = new FingertipCenters
+        {
+            Thumb = new Vector3(-0.0006f, -0.0056f, -0.0081f),
+            Index = new Vector3(0.0008f, -0.0059f, -0.0089f),
+            Middle = new Vector3(0.0005f, -0.0079f, -0.0089f),
+            Ring = new Vector3(0.0013f, -0.0054f, -0.0055f),
+            Little = new Vector3(0.0012f, -0.0060f, -0.0070f),
+        };
+
+        [Tooltip("Local-space center of the palm box trigger on an XR Hands skeleton -- below the palm joint, on the palm's surface.")]
+        public Vector3 XRHandsPalmColliderCenter = new Vector3(0.001f, -0.0193f, -0.0038f);
+
+        [Tooltip("Local-space size of the palm box trigger on an XR Hands skeleton.")]
+        public Vector3 XRHandsPalmColliderSize = new Vector3(0.062f, 0.0203f, 0.0605f);
+
         // Merged in from HaptGloveUI (2026-07-30) -- tracks which hand's button most
         // recently initiated a connection, for UI wired via ConnectLeftBT/ConnectRightBT.
 
@@ -915,20 +946,24 @@ namespace HexR
         {
             if (target.GetComponent<Collider>() == null)
             {
+                bool meta = HexRTrackedHand.IsMetaJoint(target.transform);
+                bool left = handType == HaptGloveHandler.HandType.Left;
+
                 if (finger == HapticFingerTrigger.FingerType.Palm)
                 {
                     BoxCollider box = target.AddComponent<BoxCollider>();
                     box.isTrigger = true;
-                    box.size = controller.PalmColliderSize;
+                    box.size = meta ? controller.PalmColliderSize : controller.XRHandsPalmColliderSize;
+                    box.center = meta ? Vector3.zero : controller.XRHandsPalmColliderCenter;
                 }
                 else
                 {
                     SphereCollider sphere = target.AddComponent<SphereCollider>();
                     sphere.isTrigger = true;
                     sphere.radius = controller.FingertipColliderRadius;
-                    FingertipCenters centers = handType == HaptGloveHandler.HandType.Left
-                        ? controller.LeftFingertipCenters
-                        : controller.RightFingertipCenters;
+                    FingertipCenters centers = meta
+                        ? (left ? controller.LeftFingertipCenters : controller.RightFingertipCenters)
+                        : (left ? controller.XRHandsLeftFingertipCenters : controller.XRHandsRightFingertipCenters);
                     sphere.center = centers.Get(finger);
                 }
             }
