@@ -20,7 +20,7 @@ namespace HexR
         private float IndexSmallest, MiddleSmallest, RingSmallest, LittleSmallest, ThumbSmallest;
 
         internal HexRManager haptGloveManager;
-        internal PhysicsHandTracking haptHandTracking;
+        internal HexRTrackedHand haptHandTracking;
         [HideInInspector]
         public float IndexUse, MiddleUse, RingUse, LittleUse, ThumbUse;
         // Start is called before the first frame update
@@ -125,7 +125,7 @@ namespace HexR
             FingerUseTracking controller = (FingerUseTracking)target;
 
          HexRManager haptGloveManager = controller.GetComponentInParent<HexRManager>();
-         PhysicsHandTracking haptHandTracking= controller.gameObject.GetComponent<PhysicsHandTracking>();
+         HexRTrackedHand haptHandTracking= controller.gameObject.GetComponent<HexRTrackedHand>();
 
             #region Editor GUI for hexr panel
             // Create a tooltip for the slider
@@ -204,7 +204,7 @@ namespace HexR
 
                 if (haptGloveManager.XRFramework == HexRManager.Options.OpenXR)
                 {
-                    if(haptHandTracking.handType == PhysicsHandTracking.HandType.Left)
+                    if(haptHandTracking.handType == HexRTrackedHand.HandType.Left)
                     {
                         try
                         {
@@ -258,7 +258,7 @@ namespace HexR
 
                 else if (haptGloveManager.XRFramework == HexRManager.Options.MetaOVR)
                 {
-                    if (haptHandTracking.handType == PhysicsHandTracking.HandType.Left)
+                    if (haptHandTracking.handType == HexRTrackedHand.HandType.Left)
                     {
                         try
                         {

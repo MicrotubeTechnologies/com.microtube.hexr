@@ -5,7 +5,7 @@ using HexR;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-// Draws a red/green solid for every collider on the HexR hands, so you can see where touch
+// Draws a solid for every collider on the HexR hands, so you can see where touch
 // detection actually is rather than inferring it from the Inspector.
 //
 // It finds those colliders itself, via HexRManager, instead of scanning its own children.
@@ -22,18 +22,14 @@ using UnityEngine.SceneManagement;
 public class HaptGloveCollidersVisualizer : MonoBehaviour
 {
     [Header("What to show")]
-    [Tooltip("Colliders on the raw tracked hands -- the ones Meta's hand tracking drives, and the only ones that fire haptics on the current rig.")]
+    [Tooltip("Colliders on the tracked hands -- the fingertip and palm triggers that fire haptics.")]
     public bool showTrackedHands = true;
-
-    [Tooltip("Colliders on the HexR ghost/physics hands. Worth turning on when you're checking whether a touch is being detected twice.")]
-    public bool showGhostRigs = true;
 
     [Tooltip("Extra roots to visualize, on top of whatever HexRManager resolves. Usually left empty.")]
     public List<Transform> extraRoots = new List<Transform>();
 
     [Header("Appearance")]
     public Color trackedHandColor = new Color(0.2f, 0.9f, 0.3f);
-    public Color ghostRigColor = new Color(0.9f, 0.15f, 0.15f);
     public Color extraRootColor = new Color(0.25f, 0.5f, 1f);
 
     // Marks the objects this component spawned, so a second visualizer in the scene doesn't
@@ -194,7 +190,7 @@ public class HaptGloveCollidersVisualizer : MonoBehaviour
             return;
         }
 
-        // One collider can sit under two roots at once (a ghost rig nested under a tracked
+        // One collider can sit under two roots at once (an extra root nested under a tracked
         // hand, say), and drawing it twice would z-fight rather than look like two things.
         HashSet<Collider> seen = new HashSet<Collider>();
         int drawn = 0;
@@ -246,9 +242,8 @@ public class HaptGloveCollidersVisualizer : MonoBehaviour
         visualizers.Clear();
     }
 
-    // A root to scan plus the colour its colliders get drawn in, so tracked-hand and ghost-rig
-    // colliders are told apart on sight -- the two overlap in space, and which one you are
-    // looking at is exactly the question this component exists to answer.
+    // A root to scan plus the colour its colliders get drawn in, so tracked-hand colliders and
+    // anything added through extraRoots are told apart on sight.
     private struct RootTarget
     {
         public Transform Root;
@@ -295,24 +290,10 @@ public class HaptGloveCollidersVisualizer : MonoBehaviour
             return;
         }
 
-        PhysicsHandTracking legacy = hand.GetComponent<PhysicsHandTracking>();
-
-        if (showTrackedHands)
+        HexRTrackedHand tracking = hand.GetComponent<HexRTrackedHand>();
+        if (showTrackedHands && tracking != null && tracking.handRoot != null)
         {
-            Transform tracked = legacy != null ? legacy.handRoot : null;
-            if (tracked != null)
-            {
-                roots.Add(new RootTarget(tracked, trackedHandColor));
-            }
-        }
-
-        if (showGhostRigs)
-        {
-            Transform ghost = legacy != null ? legacy.HexrRoot : null;
-            if (ghost != null)
-            {
-                roots.Add(new RootTarget(ghost, ghostRigColor));
-            }
+            roots.Add(new RootTarget(tracking.handRoot, trackedHandColor));
         }
     }
 

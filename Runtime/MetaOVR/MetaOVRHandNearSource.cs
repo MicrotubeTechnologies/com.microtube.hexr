@@ -22,7 +22,7 @@ namespace HexR.MetaOVR
     [RequireComponent(typeof(PressureTrackerMain))]
     public class MetaOVRHandNearSource : MonoBehaviour
     {
-        [Tooltip("Where to search when auto-finding the interactors. Defaults to this hand's PhysicsHandTracking.handRoot.")]
+        [Tooltip("Where to search when auto-finding the interactors. Defaults to this hand's HexRTrackedHand.handRoot.")]
         public Transform searchRoot;
 
         private PressureTrackerMain tracker;
@@ -69,9 +69,9 @@ namespace HexR.MetaOVR
             }
 
             // The Pressure Controller sits under the rig alongside the hand it belongs to, so the
-            // hand's own PhysicsHandTracking is the reliable way to reach the tracked hand root --
+            // hand's own HexRTrackedHand is the reliable way to reach the tracked hand root --
             // the same one AutoSetup hands to the backend hook.
-            PhysicsHandTracking tracking = GetComponentInParent<PhysicsHandTracking>();
+            HexRTrackedHand tracking = GetComponentInParent<HexRTrackedHand>();
             return tracking != null ? tracking.handRoot : null;
         }
 

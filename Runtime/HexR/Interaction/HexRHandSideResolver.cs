@@ -111,7 +111,7 @@ namespace HexR
         }
 
         // leftHand/rightHand are HaptGloveHandlers sitting on the Pressure Controllers, and the
-        // tracked hand root is on the PhysicsHandTracking above them -- the same hop
+        // tracked hand root is on the HexRTrackedHand above them -- the same hop
         // MetaOVRHandNearSource makes to find its interactors.
         private static Transform HandRootOf(Component hand)
         {
@@ -120,7 +120,7 @@ namespace HexR
                 return null;
             }
 
-            PhysicsHandTracking tracking = hand.GetComponentInParent<PhysicsHandTracking>();
+            HexRTrackedHand tracking = hand.GetComponentInParent<HexRTrackedHand>();
             return tracking != null ? tracking.handRoot : null;
         }
     }

@@ -88,7 +88,7 @@ that keeps its own `HaptGlove.dll` will collide with `HaptGlove.Runtime`.
 
 - `Runtime/HexR/` (assembly `HexR.Runtime`) — backend-agnostic; compiles with neither XR
   backend installed. `HexRManager` (scene wiring, Auto Setup, Bluetooth connect flow),
-  `PhysicsHandTracking` (raw-hand joint resolution + optional ghost-rig mirroring),
+  `HexRTrackedHand` (which tracked hand each HexR hand is, and where its joints are),
   `HapticFingerTrigger`, `HexRGrabbable`, `HexRUsable`,
   `FingerUseTracking`, `PressureTrackerMain`, `ProximityCheck`, `SpecialHaptics`,
   `HaptGloveCollidersVisualizer`, `HexRDebugLogPanel`, `HexRPanelConnectButtons`.
@@ -230,7 +230,7 @@ other OpenXR runtime. There is no PICO setting anywhere in HexR, and there shoul
 Use **HexR → Create HexR Rig → Open XR (Quest, PICO, SteamVR)** and leave `XR Framework` on
 `OpenXR`.
 
-**Why it just works.** `PhysicsHandTracking.OpenXRStart` resolves joints by the Unity XR
+**Why it just works.** `HexRTrackedHand` resolves joints by the Unity XR
 Hands names — `L_ThumbMetacarpal`, `L_IndexTip`, … `L_Palm` — and `AutoSetup` finds the hand
 roots as `Left`/`Right Hand Interaction Visual` → `L_Wrist`/`R_Wrist`. PICO's hand-tracking
 subsystem produces exactly those names, because they come from `com.unity.xr.hands` rather

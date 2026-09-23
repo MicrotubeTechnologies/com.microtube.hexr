@@ -130,13 +130,10 @@ namespace HexR
             }
         }
 
-        // Thumb is shown too, but only used as a fallback -- if the rig has a
-        // "..._thumb_null" locator, Auto Setup uses that instead (see
-        // ResolveRawThumbCenterMarker / AutoAddFingerHapticsForHand).
         private static void DrawFingertipCenters(HexRManager.FingertipCenters centers)
         {
             centers.Thumb = EditorGUILayout.Vector3Field(
-                new GUIContent("Thumb", "Fallback center used only if the rig has no \"..._thumb_null\" locator -- when one exists, Auto Setup uses its position instead of this value."),
+                new GUIContent("Thumb"),
                 centers.Thumb);
             centers.Index = EditorGUILayout.Vector3Field(new GUIContent("Index", "Center offset for the index fingertip's sphere collider."), centers.Index);
             centers.Middle = EditorGUILayout.Vector3Field(new GUIContent("Middle", "Center offset for the middle fingertip's sphere collider."), centers.Middle);

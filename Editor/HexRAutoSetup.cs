@@ -72,8 +72,8 @@ namespace HexR
                 {
                     GameObject LeftXR = GameObject.Find("Left Hand Interaction Visual");
                     GameObject RightXR = GameObject.Find("Right Hand Interaction Visual");
-                    PhysicsHandTracking LeftP = controller.leftHand.gameObject.GetComponent<PhysicsHandTracking>();
-                    PhysicsHandTracking RightP = controller.rightHand.gameObject.GetComponent<PhysicsHandTracking>();
+                    HexRTrackedHand LeftP = controller.leftHand.gameObject.GetComponent<HexRTrackedHand>();
+                    HexRTrackedHand RightP = controller.rightHand.gameObject.GetComponent<HexRTrackedHand>();
                     LeftP.handRoot = LeftXR.transform.Find("L_Wrist");
                     RightP.handRoot = RightXR.transform.Find("R_Wrist");
                     EditorUtility.SetDirty(LeftP); // Mark as dirty to save changes
@@ -81,7 +81,7 @@ namespace HexR
                 }
                 catch (System.Exception e)
                 {
-                    Debug.LogWarning("[HexR] AutoSetup: XR hand is not linked to Physics hand tracking -- " + e.Message + ". Manual link needed: drag the hand root of your VR hand to the left and right PhysicsHandTracking script.");
+                    Debug.LogWarning("[HexR] AutoSetup: XR hand is not linked to HexRTrackedHand -- " + e.Message + ". Manual link needed: drag the hand root of your VR hand to the left and right HexRTrackedHand script.");
                 }
             }
 
@@ -104,15 +104,15 @@ namespace HexR
                 // Find hand root for physics hand
                 try
                 {
-                    PhysicsHandTracking LeftP = controller.leftHand.gameObject.GetComponent<PhysicsHandTracking>();
-                    PhysicsHandTracking RightP = controller.rightHand.gameObject.GetComponent<PhysicsHandTracking>();
+                    HexRTrackedHand LeftP = controller.leftHand.gameObject.GetComponent<HexRTrackedHand>();
+                    HexRTrackedHand RightP = controller.rightHand.gameObject.GetComponent<HexRTrackedHand>();
                     LeftP.handRoot = null;
                     RightP.handRoot = null;
 
                     // "OpenXRLeftHand/OpenXRRightHand" first: from com.meta.xr.sdk.interaction
                     // v201 on, HandVisual.Awake deactivates the legacy OculusHand_L/R bone rig
                     // and drives the OpenXR one instead, so pointing handRoot at OculusHand_L/R
-                    // now hands PhysicsHandTracking a root that goes inactive on Awake (and that
+                    // now hands HexRTrackedHand a root that goes inactive on Awake (and that
                     // GameObject.Find can no longer re-find when it nulls out).
                     // "OculusHand_L/R" is the legacy Oculus Integration naming, still correct on
                     // older SDKs. Projects built with Meta's "Building Blocks" hand-tracking
@@ -130,13 +130,13 @@ namespace HexR
                 }
                 catch (System.Exception e)
                 {
-                    Debug.LogWarning("[HexR] AutoSetup: XR hand is not linked to Physics hand tracking -- " + e.Message + ". Manual link needed: drag the hand root of your VR hand to the left and right PhysicsHandTracking script.");
+                    Debug.LogWarning("[HexR] AutoSetup: XR hand is not linked to HexRTrackedHand -- " + e.Message + ". Manual link needed: drag the hand root of your VR hand to the left and right HexRTrackedHand script.");
                 }
             }
 
             // Add trigger colliders + HapticFingerTrigger to each fingertip/palm directly on
             // the raw tracked hand -- this is now the one and only haptics/grab
-            // touch-detection path (see PhysicsHandTracking.ResolveRawFingerJoint /
+            // touch-detection path (see HexRTrackedHand.ResolveRawFingerJoint /
             // ResolveRawPalmJoint). Runs after handRoot is wired above, and is safe to
             // re-run: existing colliders are never touched, existing HapticFingerTrigger
             // components just get their config refreshed.

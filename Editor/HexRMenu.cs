@@ -441,138 +441,133 @@ namespace HexR
             Debug.Log($"[HexR] Created and set up \"{prefabName}\" in the scene. Check the console above for anything Auto Setup couldn't find (e.g. no XR camera rig in the scene yet) -- those need manual wiring.");
         }
 
-        // Ghost-rig joint names that used to carry a manually-placed HapticFingerTrigger +
-        // trigger Collider before HexRManager.AutoSetup started adding them directly on the
-        // raw tracked hand instead (PhysicsHandTracking.ResolveRawFingerJoint/
-        // ResolveRawPalmJoint). Left over here, both hands would double-fire haptics/grab
-        // for the same touch -- one-time cleanup, not something Auto Setup itself should do
-        // automatically since it has no way to know these specific legacy names are safe to
-        // touch on an arbitrary project's rig.
-        private static readonly string[] LegacyGhostRigJointNames =
-        {
-            "L_Index_3", "L_Middle_3", "L_Ring_3", "L_Pinky_1", "L_Thumb_2", "L_GhostPalm",
-            "R_Index_3", "R_Middle_3", "R_Ring_3", "R_Pinky_1", "R_Thumb_2", "R_GhostPalm",
-            "GhostIndex", "GhostMiddle", "GhostRing", "GhostPinky", "GhostThumb", "L_Palm", "R_Palm"
-        };
-
-        [MenuItem("HexR/Migration/Remove Legacy Ghost-Rig Haptic Triggers", false, 60)]
-        private static void RemoveLegacyGhostRigHapticTriggers()
-        {
-            RemoveLegacyHapticTriggersFromPrefab(MetaOVRPrefabName);
-            RemoveLegacyHapticTriggersFromPrefab(OpenXRPrefabName);
-        }
-
-        private static void RemoveLegacyHapticTriggersFromPrefab(string prefabName)
-        {
-            GameObject prefab = FindRigPrefab(prefabName);
-            if (prefab == null)
-            {
-                Debug.LogWarning($"[HexR] Migration: could not find \"{prefabName}\" -- skipping.");
-                return;
-            }
-
-            string path = AssetDatabase.GetAssetPath(prefab);
-            GameObject root = PrefabUtility.LoadPrefabContents(path);
-            int removedTriggers = 0, removedColliders = 0;
-
-            try
-            {
-                foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
-                {
-                    if (System.Array.IndexOf(LegacyGhostRigJointNames, t.name) < 0) continue;
-
-                    HapticFingerTrigger trigger = t.GetComponent<HapticFingerTrigger>();
-                    if (trigger != null)
-                    {
-                        Object.DestroyImmediate(trigger);
-                        removedTriggers++;
-                    }
-
-                    Collider collider = t.GetComponent<Collider>();
-                    if (collider != null && collider.isTrigger)
-                    {
-                        Object.DestroyImmediate(collider);
-                        removedColliders++;
-                    }
-                }
-
-                if (removedTriggers > 0 || removedColliders > 0)
-                {
-                    PrefabUtility.SaveAsPrefabAsset(root, path);
-                    Debug.Log($"[HexR] Migration: removed {removedTriggers} HapticFingerTrigger and {removedColliders} trigger Collider component(s) from \"{prefabName}\" -- haptics/grab now detect via the raw hand instead.");
-                }
-                else
-                {
-                    Debug.Log($"[HexR] Migration: \"{prefabName}\" had no legacy ghost-rig haptic triggers to remove -- already clean.");
-                }
-            }
-            finally
-            {
-                PrefabUtility.UnloadPrefabContents(root);
-            }
-        }
-
-        // Deletes whatever each hand's PhysicsHandTracking.HexrRoot currently points to --
-        // that field is, by the code's own definition, the root of the ghost-rig hierarchy
-        // (MetaOVRStart/OpenXRStart search under HexrRoot.gameObject for the ghost joints
-        // they mirror the real hand onto). Using the field itself as the deletion boundary,
-        // rather than guessing object names, means this stays correct even if a given rig's
-        // ghost hierarchy isn't named/shaped the way you'd expect -- confirmed necessary
-        // here, since one hand's HexrRoot turned out to point at an object literally named
-        // "b_r_wrist", not anything obviously "ghost"-named.
+        // Strips the HexR ghost hand -- the physics copy of the hand that PhysicsHandTracking
+        // used to drive -- from every rig in the project. Haptics now detect on the tracked
+        // hand's own joints (Auto Setup puts the triggers there), so a ghost left behind is
+        // at best dead weight and at worst a second set of HapticFingerTriggers that fire
+        // alongside the real ones.
         //
-        // PhysicsHandTracking degrades gracefully once HexrRoot is null (see MetaOVRStart/
-        // OpenXRStart/*Update/*FixedUpdate's early-out guards) -- handRoot and everything the
-        // new raw-hand haptics/grab system depends on are untouched.
-        [MenuItem("HexR/Migration/Remove Ghost Hand Rig", false, 61)]
-        private static void RemoveGhostHandRig()
-        {
-            RemoveGhostHandRigFromPrefab(MetaOVRPrefabName);
-            RemoveGhostHandRigFromPrefab(OpenXRPrefabName);
-        }
+        // Found by structure rather than by a reference, because the field that pointed at it
+        // (HexrRoot) is gone. On each object carrying a HexRTrackedHand, these direct children
+        // are the ghost:
+        //   - the joint tree: L_Wrist/R_Wrist (XR Hands naming) or b_l_wrist/b_r_wrist (OVR)
+        //   - the skinned hand meshes that were bound to it
+        //   - anything named *Ghost* (loose palm triggers)
+        // plus the non-kinematic Rigidbody on the hand object itself, which only existed to be
+        // velocity-driven toward the tracked wrist. The hand object stays: it carries the
+        // HaptGloveHandler, the HexRTrackedHand, and on some rigs the Pressure Controller.
+        //
+        // Covers prefabs under Assets/ and an editable (embedded or local) copy of this package,
+        // plus every open scene -- a rig that was unpacked into a scene has no prefab to fix.
+        // Children that belong to a prefab instance are skipped in scenes; fixing the prefab
+        // removes them from the instance.
+        private static readonly string[] GhostJointRootNames = { "L_Wrist", "R_Wrist", "b_l_wrist", "b_r_wrist" };
 
-        private static void RemoveGhostHandRigFromPrefab(string prefabName)
+        [MenuItem("HexR/Migration/Remove Ghost Hand", false, 60)]
+        private static void RemoveGhostHand()
         {
-            GameObject prefab = FindRigPrefab(prefabName);
-            if (prefab == null)
+            int total = 0;
+
+            foreach (string guid in AssetDatabase.FindAssets("t:Prefab", new[] { "Assets", "Packages/com.microtube.hexr" }))
             {
-                Debug.LogWarning($"[HexR] Migration: could not find \"{prefabName}\" -- skipping.");
-                return;
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!IsEditable(path)) continue;
+
+                GameObject asset = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                if (asset == null || asset.GetComponentInChildren<HexRTrackedHand>(true) == null) continue;
+
+                GameObject root = PrefabUtility.LoadPrefabContents(path);
+                try
+                {
+                    int removed = 0;
+                    foreach (HexRTrackedHand hand in root.GetComponentsInChildren<HexRTrackedHand>(true))
+                    {
+                        removed += StripGhost(hand, path, false);
+                    }
+                    if (removed > 0)
+                    {
+                        PrefabUtility.SaveAsPrefabAsset(root, path);
+                        total += removed;
+                    }
+                }
+                finally
+                {
+                    PrefabUtility.UnloadPrefabContents(root);
+                }
             }
 
-            string path = AssetDatabase.GetAssetPath(prefab);
-            GameObject root = PrefabUtility.LoadPrefabContents(path);
-            int removed = 0;
-
-            try
+            for (int i = 0; i < SceneManager.sceneCount; i++)
             {
-                foreach (PhysicsHandTracking tracking in root.GetComponentsInChildren<PhysicsHandTracking>(true))
+                Scene scene = SceneManager.GetSceneAt(i);
+                if (!scene.isLoaded) continue;
+
+                int removed = 0;
+                foreach (GameObject go in scene.GetRootGameObjects())
                 {
-                    if (tracking.HexrRoot == null) continue;
-
-                    GameObject ghostRoot = tracking.HexrRoot.gameObject;
-                    int descendantCount = CountDescendants(ghostRoot.transform);
-                    Debug.Log($"[HexR] Migration: removing ghost-rig root \"{ghostRoot.name}\" ({descendantCount} descendant object(s)) from \"{prefabName}\", referenced by {tracking.gameObject.name}'s PhysicsHandTracking.HexrRoot.");
-
-                    tracking.HexrRoot = null;
-                    Object.DestroyImmediate(ghostRoot);
-                    removed++;
+                    foreach (HexRTrackedHand hand in go.GetComponentsInChildren<HexRTrackedHand>(true))
+                    {
+                        removed += StripGhost(hand, scene.path, true);
+                    }
                 }
-
                 if (removed > 0)
                 {
-                    PrefabUtility.SaveAsPrefabAsset(root, path);
-                    Debug.Log($"[HexR] Migration: removed {removed} ghost-rig root(s) from \"{prefabName}\". Review the change (e.g. git diff) before committing.");
-                }
-                else
-                {
-                    Debug.Log($"[HexR] Migration: \"{prefabName}\" has no HexrRoot assigned on any hand -- nothing to remove.");
+                    EditorSceneManager.MarkSceneDirty(scene);
+                    total += removed;
                 }
             }
-            finally
+
+            Debug.Log(total > 0
+                ? $"[HexR] Migration: removed {total} ghost-hand object(s)/component(s). Save any open scenes, then run HexR > Troubleshoot > Re-run Auto Setup in each scene so the triggers land on the tracked hand."
+                : "[HexR] Migration: no ghost hand found in any editable prefab or open scene -- already clean.");
+        }
+
+        private static int StripGhost(HexRTrackedHand hand, string where, bool inScene)
+        {
+            int removed = 0;
+            Transform handObject = hand.transform;
+
+            for (int i = handObject.childCount - 1; i >= 0; i--)
             {
-                PrefabUtility.UnloadPrefabContents(root);
+                Transform child = handObject.GetChild(i);
+                bool isGhost = System.Array.IndexOf(GhostJointRootNames, child.name) >= 0
+                    || child.GetComponent<SkinnedMeshRenderer>() != null
+                    || child.name.Contains("Ghost");
+                if (!isGhost) continue;
+
+                // Never take the tracked hand with it -- a rig that parents the SDK hand under
+                // its own hand object would otherwise lose it.
+                if (hand.handRoot != null && hand.handRoot.IsChildOf(child)) continue;
+
+                if (inScene && PrefabUtility.IsPartOfPrefabInstance(child.gameObject)) continue;
+
+                Debug.Log($"[HexR] Migration: removing ghost \"{child.name}\" ({CountDescendants(child)} descendant object(s)) from {handObject.name} in {where}.");
+                if (inScene) Undo.DestroyObjectImmediate(child.gameObject);
+                else Object.DestroyImmediate(child.gameObject);
+                removed++;
             }
+
+            Rigidbody body = handObject.GetComponent<Rigidbody>();
+            if (body != null && !body.isKinematic
+                && !(inScene && PrefabUtility.IsPartOfPrefabInstance(body)))
+            {
+                Debug.Log($"[HexR] Migration: removing the ghost's Rigidbody from {handObject.name} in {where}.");
+                if (inScene) Undo.DestroyObjectImmediate(body);
+                else Object.DestroyImmediate(body);
+                removed++;
+            }
+
+            return removed;
+        }
+
+        // A git- or registry-installed package is a read-only cache; writing to it would be
+        // thrown away on the next resolve.
+        private static bool IsEditable(string assetPath)
+        {
+            if (!assetPath.StartsWith("Packages/")) return true;
+            UnityEditor.PackageManager.PackageInfo info = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(assetPath);
+            return info != null
+                && (info.source == UnityEditor.PackageManager.PackageSource.Embedded
+                    || info.source == UnityEditor.PackageManager.PackageSource.Local);
         }
 
         private static int CountDescendants(Transform t)

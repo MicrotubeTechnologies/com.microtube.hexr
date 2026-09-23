@@ -434,22 +434,22 @@ namespace HexR
             // already reports an unassigned hand.
             if (hand == null) return true;
 
-            PhysicsHandTracking legacy = hand.GetComponent<PhysicsHandTracking>();
-            if (legacy == null) return true;
+            HexRTrackedHand tracking = hand.GetComponent<HexRTrackedHand>();
+            if (tracking == null) return true;
 
             GameObject root = handType == HaptGloveHandler.HandType.Left
                 ? FindHandVisualRoot("OpenXRLeftHand", "OculusHand_L", "LeftOVRHand")
                 : FindHandVisualRoot("OpenXRRightHand", "OculusHand_R", "RightOVRHand");
             if (root == null) return false;
 
-            legacy.handRoot = root.transform;
+            tracking.handRoot = root.transform;
 
             // Readiness test for the incoming rig, replacing the old one that leaned on the
             // mirror having mapped. This asks the question the work below actually depends on:
             // can the raw hand's joints be resolved yet? HandVisual builds them in its own
             // Awake and a build can need another frame or two, so a miss here means "not yet",
             // not "never" -- the caller retries.
-            if (legacy.ResolveRawPalmJoint() == null)
+            if (tracking.ResolveRawPalmJoint() == null)
             {
                 return false;
             }
@@ -465,8 +465,8 @@ namespace HexR
             // "the hand can actually fire haptics" are different claims -- and the gap between
             // them is invisible unless something says so out loud. Six is correct: five
             // fingertips plus the palm.
-            int triggers = legacy.handRoot != null
-                ? legacy.handRoot.GetComponentsInChildren<HapticFingerTrigger>(true).Length
+            int triggers = tracking.handRoot != null
+                ? tracking.handRoot.GetComponentsInChildren<HapticFingerTrigger>(true).Length
                 : 0;
             string pressure = GameObject.Find((handType == HaptGloveHandler.HandType.Left ? "Left" : "Right")
                 + " Pressure Controller") != null ? "found" : "MISSING";
@@ -769,7 +769,7 @@ namespace HexR
             // assemblies without either wiring the other's rig.
             if (hand != null)
             {
-                PhysicsHandTracking tracking = hand.GetComponent<PhysicsHandTracking>();
+                HexRTrackedHand tracking = hand.GetComponent<HexRTrackedHand>();
                 if (tracking != null && tracking.handRoot != null)
                 {
                     Action<PressureTrackerMain, Transform, string> backendSetup = PressureTrackerBackendSetup;
@@ -800,8 +800,8 @@ namespace HexR
         }
 
         // Adds HaptGloveCollidersVisualizer to `target` if it doesn't already have one. Called
-        // once, on the manager itself: the visualizer resolves both hands' tracked and ghost
-        // roots through HexRManager rather than scanning its own children, so where it sits no
+        // once, on the manager itself: the visualizer resolves both hands' tracked roots
+        // through HexRManager rather than scanning its own children, so where it sits no
         // longer decides what it can draw. Point the HexR Panel's collider toggle at this one.
         internal static void EnsureColliderVisualizer(GameObject target)
         {
@@ -817,7 +817,7 @@ namespace HexR
         private static void AutoAddFingerHapticsForHand(HexRManager controller, HaptGloveHandler hand, HaptGloveHandler.HandType handType)
         {
             if (hand == null) return;
-            PhysicsHandTracking tracking = hand.GetComponent<PhysicsHandTracking>();
+            HexRTrackedHand tracking = hand.GetComponent<HexRTrackedHand>();
             if (tracking == null) return;
 
             // No collider visualizer is added here any more. It used to need one per hand root,
@@ -838,19 +838,7 @@ namespace HexR
                         continue;
                     }
 
-                    // For the thumb, prefer the rig's own "..._thumb_null" locator (if it has
-                    // one) over the tunable center -- it's an authored answer, not a guess.
-                    Vector3? centerOverride = null;
-                    if (finger == HapticFingerTrigger.FingerType.Thumb)
-                    {
-                        Transform thumbMarker = tracking.ResolveRawThumbCenterMarker();
-                        if (thumbMarker != null)
-                        {
-                            centerOverride = joint.InverseTransformPoint(thumbMarker.position);
-                        }
-                    }
-
-                    AddOrConfigureFingerHaptics(joint.gameObject, controller, handType, finger, centerOverride);
+                    AddOrConfigureFingerHaptics(joint.gameObject, controller, handType, finger);
                 }
                 catch (System.Exception e)
                 {
@@ -867,7 +855,7 @@ namespace HexR
                 }
                 else
                 {
-                    AddOrConfigureFingerHaptics(palm.gameObject, controller, handType, HapticFingerTrigger.FingerType.Palm, null);
+                    AddOrConfigureFingerHaptics(palm.gameObject, controller, handType, HapticFingerTrigger.FingerType.Palm);
                 }
             }
             catch (System.Exception e)
@@ -879,7 +867,7 @@ namespace HexR
         // Never touches a collider that's already there (respects manual tuning/re-runs).
         // HapticFingerTrigger is added if missing, otherwise just has its config refreshed --
         // so re-running Auto Setup after reassigning hands fixes stale wiring.
-        private static void AddOrConfigureFingerHaptics(GameObject target, HexRManager controller, HaptGloveHandler.HandType handType, HapticFingerTrigger.FingerType finger, Vector3? centerOverride)
+        private static void AddOrConfigureFingerHaptics(GameObject target, HexRManager controller, HaptGloveHandler.HandType handType, HapticFingerTrigger.FingerType finger)
         {
             if (target.GetComponent<Collider>() == null)
             {
@@ -894,17 +882,10 @@ namespace HexR
                     SphereCollider sphere = target.AddComponent<SphereCollider>();
                     sphere.isTrigger = true;
                     sphere.radius = controller.FingertipColliderRadius;
-                    if (centerOverride.HasValue)
-                    {
-                        sphere.center = centerOverride.Value;
-                    }
-                    else
-                    {
-                        FingertipCenters centers = handType == HaptGloveHandler.HandType.Left
-                            ? controller.LeftFingertipCenters
-                            : controller.RightFingertipCenters;
-                        sphere.center = centers.Get(finger);
-                    }
+                    FingertipCenters centers = handType == HaptGloveHandler.HandType.Left
+                        ? controller.LeftFingertipCenters
+                        : controller.RightFingertipCenters;
+                    sphere.center = centers.Get(finger);
                 }
             }
 

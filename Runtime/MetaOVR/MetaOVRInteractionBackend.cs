@@ -396,7 +396,7 @@ namespace HexR.MetaOVR
 
                 // Everything else on the hand -- distance/touch grab, ray, and any custom
                 // interactor the two fields above do not name.
-                PhysicsHandTracking tracking = tracker.GetComponentInParent<PhysicsHandTracking>();
+                HexRTrackedHand tracking = tracker.GetComponentInParent<HexRTrackedHand>();
                 Transform handRoot = tracking != null ? tracking.handRoot : null;
                 if (handRoot == null)
                 {

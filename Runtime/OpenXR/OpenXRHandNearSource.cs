@@ -83,7 +83,7 @@ namespace HexR.OpenXR
                 return searchRoot;
             }
 
-            PhysicsHandTracking tracking = GetComponentInParent<PhysicsHandTracking>();
+            HexRTrackedHand tracking = GetComponentInParent<HexRTrackedHand>();
             Transform t = tracking != null ? tracking.handRoot : null;
             if (t == null)
             {

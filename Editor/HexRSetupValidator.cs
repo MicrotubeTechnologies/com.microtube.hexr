@@ -106,15 +106,15 @@ namespace HexR
             string label = expected == HaptGloveHandler.HandType.Left ? "Left" : "Right";
             if (hand == null) return true; // already reported by the caller
 
-            PhysicsHandTracking tracking = hand.GetComponent<PhysicsHandTracking>();
+            HexRTrackedHand tracking = hand.GetComponent<HexRTrackedHand>();
             if (tracking == null)
             {
-                return Check(results, false, label + " hand has PhysicsHandTracking", label + " hand has no PhysicsHandTracking component -- it won't move.");
+                return Check(results, false, label + " hand has HexRTrackedHand", label + " hand has no HexRTrackedHand component -- nothing tells HexR which tracked hand it is, so no haptics can be placed on it.");
             }
 
             bool ok = true;
             ok &= Check(results, tracking.handRoot != null, label + " hand's handRoot assigned",
-                label + " hand's PhysicsHandTracking.handRoot is not assigned -- this hand won't track, and any collider-based haptics on it will never trigger.");
+                label + " hand's HexRTrackedHand.handRoot is not assigned -- no fingertip or palm haptics can be placed on it. Run HexR > Auto Setup Scene.");
 
             if (tracking.handRoot != null)
             {
@@ -122,12 +122,8 @@ namespace HexR
                 // the "is it assigned at all" check above so both surface independently
                 // (deliberately not folded into `ok`, matching the original behavior).
                 Check(results, NameSuggestsHand(tracking.handRoot.name, expected), label + " hand's handRoot name looks right",
-                    label + " hand's PhysicsHandTracking.handRoot is '" + tracking.handRoot.name + "', which doesn't look like a " + label + "-hand object -- double-check this isn't wired to the other hand's transform.");
+                    label + " hand's HexRTrackedHand.handRoot is '" + tracking.handRoot.name + "', which doesn't look like a " + label + "-hand object -- double-check this isn't wired to the other hand's transform.");
             }
-
-            // HexrRoot is intentionally not required -- it's only used for the (now
-            // optional) ghost-rig mirroring; unassigned just means no ghost rig, which
-            // PhysicsHandTracking already handles gracefully.
 
             // HapticFingerTrigger/HexRGrabbable/SpecialHaptics all find this by
             // GameObject.Find("Left/Right Pressure Controller") at their own runtime Start()
@@ -147,7 +143,7 @@ namespace HexR
         // Confirms every fingertip + palm joint on the raw tracked hand has both a trigger
         // Collider and a correctly configured HapticFingerTrigger -- what AutoAddFingerHaptics
         // is supposed to have wired up.
-        private static bool ValidateFingerHaptics(PhysicsHandTracking tracking, HaptGloveHandler.HandType expected, string label, List<SetupCheck> results)
+        private static bool ValidateFingerHaptics(HexRTrackedHand tracking, HaptGloveHandler.HandType expected, string label, List<SetupCheck> results)
         {
             if (tracking.handRoot == null) return true; // already reported by the handRoot check above
 
