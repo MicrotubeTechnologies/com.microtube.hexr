@@ -1,8 +1,6 @@
 using HaptGlove;
-using System.Linq;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace HexR
 {
@@ -26,113 +24,24 @@ namespace HexR
         // logic instead of it being duplicated in two places.
         public static void Run(HexRManager controller)
         {
-            try
+            // The rig's two hands are whichever objects carry a HexRTrackedHand, found by
+            // component rather than by name: the packaged rigs call them "Left/Right Hand
+            // Physics", a project's own copy may not (the PICO tutorial's are "Left/Right
+            // Pressure Controller"), and a name lookup that misses fails silently.
+            HexRTrackedHand left = FindRigHand(controller, HexRTrackedHand.HandType.Left);
+            HexRTrackedHand right = FindRigHand(controller, HexRTrackedHand.HandType.Right);
+            if (left != null) controller.leftHand = left.GetComponent<HaptGloveHandler>();
+            if (right != null) controller.rightHand = right.GetComponent<HaptGloveHandler>();
+            if (controller.leftHand == null || controller.rightHand == null)
             {
-                controller.rightHand = GameObject.Find("Right Hand Physics").GetComponent<HaptGloveHandler>();
-                controller.leftHand = GameObject.Find("Left Hand Physics").GetComponent<HaptGloveHandler>();
-                Debug.Log("Right Hand Physics Found And Assigned.");
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogWarning("[HexR] AutoSetup: couldn't find/assign Left/Right Hand Physics -- " + e.Message + ". Remember to assign them manually.");
-            }
-
-            if (controller.XRFramework == HexRManager.Options.OpenXR)
-            {
-                // The menu is part of the rig prefab now -- nothing to instantiate here.
-                try
-                {
-                    // The status texts, the indicator dots and HexRPanel itself are assigned by
-                    // HexRFloatingMenu, which builds them, rather than found here by name. Name
-                    // matching only ever worked against the authored panel's exact hierarchy, and
-                    // broke the moment anyone renamed a child.
-
-                    Debug.Log("[HexR] OpenXR rig set up.");
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogWarning("[HexR] AutoSetup: HexR panel is not set up -- " + e.Message + ". Manual set up needed.");
-                }
-                //Set up hand menu bluetooth buttons
-                try
-                {
-                    Button RightBluetoothButton = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "Right Bluetooth Button").GetComponent<Button>();
-                    Button LeftBluetoothButton = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "Left Bluetooth Button").GetComponent<Button>();
-
-                    RightBluetoothButton.onClick.AddListener(controller.ConnectRightBT);
-                    LeftBluetoothButton.onClick.AddListener(controller.ConnectLeftBT);
-                    Debug.Log("HexR panel button set up complete.");
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogWarning("[HexR] AutoSetup: HexR panel button is not set up -- " + e.Message + ". Manual set up needed.");
-                }
-                // Find hand root for physics hand
-                try
-                {
-                    GameObject LeftXR = GameObject.Find("Left Hand Interaction Visual");
-                    GameObject RightXR = GameObject.Find("Right Hand Interaction Visual");
-                    HexRTrackedHand LeftP = controller.leftHand.gameObject.GetComponent<HexRTrackedHand>();
-                    HexRTrackedHand RightP = controller.rightHand.gameObject.GetComponent<HexRTrackedHand>();
-                    LeftP.handRoot = LeftXR.transform.Find("L_Wrist");
-                    RightP.handRoot = RightXR.transform.Find("R_Wrist");
-                    EditorUtility.SetDirty(LeftP); // Mark as dirty to save changes
-                    EditorUtility.SetDirty(RightP); // Mark as dirty to save changes
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogWarning("[HexR] AutoSetup: XR hand is not linked to HexRTrackedHand -- " + e.Message + ". Manual link needed: drag the hand root of your VR hand to the left and right HexRTrackedHand script.");
-                }
+                Debug.LogWarning("[HexR] AutoSetup: couldn't find both hands on the rig -- each needs a HaptGloveHandler and a "
+                    + "HexRTrackedHand with its Hand Type set. Assign HexRManager's Left/Right Hand manually.");
             }
 
-            else if (controller.XRFramework == HexRManager.Options.MetaOVR)
-            {
-                //Set up HexR Panel
-                try
-                {
-                    // The status texts, the indicator dots and HexRPanel itself are assigned by
-                    // HexRFloatingMenu, which builds them, rather than found here by name. Name
-                    // matching only ever worked against the authored panel's exact hierarchy, and
-                    // broke the moment anyone renamed a child.
-
-                    Debug.Log("[HexR] Meta OVR rig set up.");
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogWarning("[HexR] AutoSetup: HexR panel is not set up -- " + e.Message + ". Manual set up needed.");
-                }
-                // Find hand root for physics hand
-                try
-                {
-                    HexRTrackedHand LeftP = controller.leftHand.gameObject.GetComponent<HexRTrackedHand>();
-                    HexRTrackedHand RightP = controller.rightHand.gameObject.GetComponent<HexRTrackedHand>();
-                    LeftP.handRoot = null;
-                    RightP.handRoot = null;
-
-                    // "OpenXRLeftHand/OpenXRRightHand" first: from com.meta.xr.sdk.interaction
-                    // v201 on, HandVisual.Awake deactivates the legacy OculusHand_L/R bone rig
-                    // and drives the OpenXR one instead, so pointing handRoot at OculusHand_L/R
-                    // now hands HexRTrackedHand a root that goes inactive on Awake (and that
-                    // GameObject.Find can no longer re-find when it nulls out).
-                    // "OculusHand_L/R" is the legacy Oculus Integration naming, still correct on
-                    // older SDKs. Projects built with Meta's "Building Blocks" hand-tracking
-                    // block instead have "LeftOVRHand"/"RightOVRHand" (under "[BuildingBlock]
-                    // Hand Tracking left/right") -- try that too rather than silently failing and
-                    // leaving handRoot unassigned.
-                    GameObject leftHandObj = HexRManager.FindHandVisualRoot("OpenXRLeftHand", "OculusHand_L", "LeftOVRHand");
-                    GameObject rightHandObj = HexRManager.FindHandVisualRoot("OpenXRRightHand", "OculusHand_R", "RightOVRHand");
-
-                    LeftP.handRoot = leftHandObj.transform;
-                    RightP.handRoot = rightHandObj.transform;
-                    EditorUtility.SetDirty(LeftP); // Mark as dirty to save changes
-                    EditorUtility.SetDirty(RightP); // Mark as dirty to save changes
-
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogWarning("[HexR] AutoSetup: XR hand is not linked to HexRTrackedHand -- " + e.Message + ". Manual link needed: drag the hand root of your VR hand to the left and right HexRTrackedHand script.");
-                }
-            }
+            // Point each hand at the SDK's tracked hand. Same lookup the scene-load rebind uses,
+            // so an Editor-time setup and a runtime rebind can't land on different objects.
+            LinkTrackedHand(left);
+            LinkTrackedHand(right);
 
             // Add trigger colliders + HapticFingerTrigger to each fingertip/palm directly on
             // the raw tracked hand -- this is now the one and only haptics/grab
@@ -148,14 +57,46 @@ namespace HexR
             HexRManager.AutoSetupPressureControllers(controller);
 
             // One visualizer for the whole rig, on the manager. It looks both hands up through
-            // HexRManager, so this single instance draws every tracked-hand and ghost-rig
-            // collider -- and, unlike the per-hand-root ones this replaces, it survives a scene
-            // change along with the manager.
+            // HexRManager, so this single instance draws every tracked-hand collider -- and,
+            // unlike the per-hand-root ones this replaces, it survives a scene change along with
+            // the manager.
             HexRManager.EnsureColliderVisualizer(controller.gameObject);
 
             EditorUtility.SetDirty(controller); // Mark as dirty to save changes
 
             HexRSetupValidator.Run(controller);
+        }
+
+        private static HexRTrackedHand FindRigHand(HexRManager controller, HexRTrackedHand.HandType side)
+        {
+            foreach (HexRTrackedHand hand in controller.GetComponentsInChildren<HexRTrackedHand>(true))
+            {
+                if (hand.handType == side) return hand;
+            }
+
+            // A rig whose hands sit outside the manager's hierarchy.
+            foreach (HexRTrackedHand hand in HexRCompat.FindAll<HexRTrackedHand>(true))
+            {
+                if (hand.handType == side) return hand;
+            }
+            return null;
+        }
+
+        private static void LinkTrackedHand(HexRTrackedHand hand)
+        {
+            if (hand == null) return;
+
+            Transform root = HexRManager.FindTrackedHandRoot(hand.handType);
+            if (root == null)
+            {
+                Debug.LogWarning("[HexR] AutoSetup: couldn't find a tracked " + hand.handType + " hand in the scene -- add a "
+                    + "hand-tracking rig (Meta's OVRCameraRig hands, or XRI's XR Hands setup), or drag the tracked hand onto "
+                    + hand.name + "'s HexRTrackedHand.handRoot.");
+                return;
+            }
+
+            hand.handRoot = root;
+            EditorUtility.SetDirty(hand);
         }
     }
 }

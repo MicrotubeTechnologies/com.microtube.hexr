@@ -350,6 +350,12 @@ namespace HexR
         {
             if (Instance != null && Instance != this)
             {
+                // Deactivate before destroying: Destroy only takes effect at the end of the
+                // frame, and until then this duplicate's objects are still findable by name.
+                // On a rig that carries its own Pressure Controllers, the incoming scene's
+                // HapticFingerTriggers would otherwise GameObject.Find the copy that is about to
+                // disappear instead of the surviving rig's.
+                gameObject.SetActive(false);
                 Destroy(gameObject);
                 return;
             }
@@ -408,8 +414,8 @@ namespace HexR
                 if (Time.unscaledTime >= deadline)
                 {
                     Debug.LogWarning("[HexR] Couldn't find a tracked hand rig in the loaded scene within "
-                        + timeoutSeconds + "s -- the HexR hands won't mirror the Meta hands here. Does this "
-                        + "scene have an OVRCameraRig with hand tracking?");
+                        + timeoutSeconds + "s -- no fingertip haptics will fire here. Does this scene have a "
+                        + "hand-tracking rig (Meta's OVRCameraRig hands, or an XR Hands visual)?");
                     yield break;
                 }
 
@@ -437,12 +443,10 @@ namespace HexR
             HexRTrackedHand tracking = hand.GetComponent<HexRTrackedHand>();
             if (tracking == null) return true;
 
-            GameObject root = handType == HaptGloveHandler.HandType.Left
-                ? FindHandVisualRoot("OpenXRLeftHand", "OculusHand_L", "LeftOVRHand")
-                : FindHandVisualRoot("OpenXRRightHand", "OculusHand_R", "RightOVRHand");
+            Transform root = FindTrackedHandRoot(tracking.handType);
             if (root == null) return false;
 
-            tracking.handRoot = root.transform;
+            tracking.handRoot = root;
 
             // Readiness test for the incoming rig, replacing the old one that leaned on the
             // mirror having mapped. This asks the question the work below actually depends on:
@@ -698,6 +702,46 @@ namespace HexR
                 if (fallback != null)
                 {
                     return fallback;
+                }
+            }
+            return null;
+        }
+
+        // Where the tracked hand is, on whichever SDK the scene has. Shared by Auto Setup and
+        // the scene-load rebind so the two can't disagree about it.
+        //
+        //   Meta:     OpenXRLeftHand (v201+), OculusHand_L (older Oculus Integration) or
+        //             LeftOVRHand (Building Blocks), preferring the Synthetic hand.
+        //   XR Hands: the L_Wrist under XRI's "Left Hand Interaction Visual" (PICO, and any
+        //             OpenXR runtime using the XRI hands setup), else any L_Wrist in the scene
+        //             that isn't part of a HexR rig.
+        internal static Transform FindTrackedHandRoot(HexRTrackedHand.HandType side)
+        {
+            bool left = side == HexRTrackedHand.HandType.Left;
+
+            GameObject meta = left
+                ? FindHandVisualRoot("OpenXRLeftHand", "OculusHand_L", "LeftOVRHand")
+                : FindHandVisualRoot("OpenXRRightHand", "OculusHand_R", "RightOVRHand");
+            if (meta != null) return meta.transform;
+
+            string wristName = left ? "L_Wrist" : "R_Wrist";
+            GameObject visual = FindHandVisualRoot(left ? "Left Hand Interaction Visual" : "Right Hand Interaction Visual");
+            if (visual != null)
+            {
+                Transform wrist = visual.transform.Find(wristName);
+                if (wrist == null)
+                {
+                    GameObject nested = HexRTrackedHand.FindChildRecursive(visual, wristName);
+                    wrist = nested != null ? nested.transform : null;
+                }
+                if (wrist != null) return wrist;
+            }
+
+            foreach (GameObject go in HexRCompat.FindAll<GameObject>(true))
+            {
+                if (go.name == wristName && go.GetComponentInParent<HexRTrackedHand>(true) == null)
+                {
+                    return go.transform;
                 }
             }
             return null;
