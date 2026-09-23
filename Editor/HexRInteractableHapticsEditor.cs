@@ -13,9 +13,12 @@ namespace HexR
     /// natural response is to go hunting for something to drag in. This says so plainly instead,
     /// and shows what the lookup currently resolves to.
     ///
-    /// It deliberately does not write the result into the fields. Doing that would serialise a
-    /// scene reference that then goes stale the moment the rig changes, and would defeat the
-    /// runtime lookup that already handles a rig loading late or arriving with a different scene.
+    /// Leaving the fields empty is the default, and the right choice for most scenes: the
+    /// runtime lookup copes with a rig that loads late or arrives with a different scene, and a
+    /// serialised reference goes stale the moment the rig changes. For projects that want the
+    /// references pinned anyway -- the habit SpecialHaptics' "Auto Find Hand Physics" serves --
+    /// an Auto Find button fills both fields with what the lookup resolves to, and Clear returns
+    /// to finding them at play.
     ///
     /// Everything here is backend-neutral: it asks the registry rather than naming an SDK type, so
     /// this file lives in HexR.Editor beside the rest of the package tooling rather than needing an
@@ -175,6 +178,35 @@ namespace HexR
                 + "\n\nLeft:  " + (left != null ? left.gameObject.name : "none")
                 + "\nRight: " + (right != null ? right.gameObject.name : "none"),
                 MessageType.Info);
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button(new GUIContent("Auto Find Pressure Controllers",
+                    "Fill Left/Right Pressure Tracker with the Pressure Controllers in this scene, the same "
+                    + "way the component finds them at play. Pinned references go stale if the rig changes.")))
+                {
+                    Undo.RecordObject(self, "Auto Find Pressure Controllers");
+                    // Same lookup the component runs at Start: by handType when the two disagree,
+                    // then by the side in the name. It only fills what is still empty.
+                    if (!self.ResolveTrackers())
+                    {
+                        Debug.LogWarning("[HexR] " + self.name + ": no Pressure Controllers in this scene to find. "
+                            + "Run HexR > Troubleshoot > Re-run Auto Setup, or add a HexR rig.", self);
+                    }
+                    EditorUtility.SetDirty(self);
+                }
+
+                using (new EditorGUI.DisabledScope(!overridden))
+                {
+                    if (GUILayout.Button(new GUIContent("Clear", "Empty both fields and find them at play again.")))
+                    {
+                        Undo.RecordObject(self, "Clear Pressure Controllers");
+                        self.leftPressureTracker = null;
+                        self.rightPressureTracker = null;
+                        EditorUtility.SetDirty(self);
+                    }
+                }
+            }
         }
     }
 }

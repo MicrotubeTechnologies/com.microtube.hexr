@@ -73,8 +73,9 @@ namespace HexR
         public float minStrength = 10f;
 
         [Header("Hands (optional)")]
-        [Tooltip("Leave both empty -- they are found automatically. Only set these to override the " +
-                 "lookup, e.g. a scene with more than one rig where you want a specific pair.")]
+        [Tooltip("Leave both empty -- they are found automatically. Set them to override the lookup, " +
+                 "e.g. a scene with more than one rig where you want a specific pair; the Auto Find " +
+                 "button below fills them with what the lookup would pick.")]
         public PressureTrackerMain leftPressureTracker;
         public PressureTrackerMain rightPressureTracker;
 
