@@ -89,7 +89,7 @@ that keeps its own `HaptGlove.dll` will collide with `HaptGlove.Runtime`.
 - `Runtime/HexR/` (assembly `HexR.Runtime`) — backend-agnostic; compiles with neither XR
   backend installed. `HexRManager` (scene wiring, Auto Setup, Bluetooth connect flow),
   `PhysicsHandTracking` (raw-hand joint resolution + optional ghost-rig mirroring),
-  `PhysicsHandTrackingOpenXR`, `HapticFingerTrigger`, `HexRGrabbable`, `HexRUsable`,
+  `HapticFingerTrigger`, `HexRGrabbable`, `HexRUsable`,
   `FingerUseTracking`, `PressureTrackerMain`, `ProximityCheck`, `SpecialHaptics`,
   `HaptGloveCollidersVisualizer`, `HexRDebugLogPanel`, `HexRPanelConnectButtons`.
 - `Runtime/MetaOVR/` (assembly `HexR.Runtime.MetaOVR`) — the only code that touches

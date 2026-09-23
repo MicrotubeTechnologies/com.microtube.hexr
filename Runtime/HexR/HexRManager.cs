@@ -359,8 +359,8 @@ namespace HexR
 
             // This rig survives scene loads. The Meta hands it mirrors do not -- every scene
             // carries its own OVRCameraRig, so the moment a new scene loads, the hand roots
-            // PhysicsHandTrackingOpenXR reads (and the fingertip trigger colliders that live on
-            // them) are destroyed, and the ghost hands stop moving for the rest of the session.
+            // (and the fingertip trigger colliders that live on them) are destroyed, and the
+            // gloves go silent for the rest of the session.
             // Re-point everything at the incoming scene's rig instead.
             SceneManager.sceneLoaded += OnSceneLoaded;
         }
@@ -435,43 +435,12 @@ namespace HexR
             if (hand == null) return true;
 
             PhysicsHandTracking legacy = hand.GetComponent<PhysicsHandTracking>();
-            PhysicsHandTrackingOpenXR openXR = hand.GetComponent<PhysicsHandTrackingOpenXR>();
-            if (legacy == null && openXR == null) return true;
+            if (legacy == null) return true;
 
             GameObject root = handType == HaptGloveHandler.HandType.Left
                 ? FindHandVisualRoot("OpenXRLeftHand", "OculusHand_L", "LeftOVRHand")
                 : FindHandVisualRoot("OpenXRRightHand", "OculusHand_R", "RightOVRHand");
             if (root == null) return false;
-
-            // Ghost mirroring is BEST EFFORT and deliberately does not gate anything below it.
-            // It used to: `if (!openXR.Rebind(...)) return false;`. That was wrong, because
-            // Rebind fails whenever there is no ghost rig to mirror onto -- which is the normal
-            // state after the Remove Ghost Hand Rig migration clears HexrRoot. The result was
-            // that every scene load after the first bailed out here, before the haptics work
-            // below, leaving the gloves silent from the second scene onward.
-            //
-            // Mirroring and haptics are independent: one drives a visual rig, the other places
-            // trigger colliders on the tracked hand. A rig with no ghost hand should still get
-            // its haptics.
-            if (openXR != null && openXR.CanBindTo(root.transform))
-            {
-                openXR.Rebind(root.transform);
-
-                // Rebind may have walked handRoot over to the OpenXR sibling of a legacy root;
-                // keep the legacy component -- and the raw-joint resolvers below, which read
-                // handRoot -- on the same object rather than two different ones.
-                if (openXR.handRoot != null)
-                {
-                    root = openXR.handRoot.gameObject;
-                }
-            }
-
-            if (legacy == null)
-            {
-                // No component that can resolve raw joints, so there are no haptics to place.
-                // Mirroring is all this hand does, and whether that took is the whole answer.
-                return openXR != null && openXR.IsMapped;
-            }
 
             legacy.handRoot = root.transform;
 
@@ -504,8 +473,7 @@ namespace HexR
 
             Debug.Log("[HexR] Rebound " + handType + " hand to " + root.name + " in scene "
                 + SceneManager.GetActiveScene().name + " -- " + triggers + " haptic trigger(s) on the tracked hand"
-                + ", Pressure Controller " + pressure
-                + ", mirroring " + (openXR != null && openXR.IsMapped ? "on" : "off") + ".");
+                + ", Pressure Controller " + pressure + ".");
             return true;
         }
 

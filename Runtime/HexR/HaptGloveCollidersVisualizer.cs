@@ -295,15 +295,11 @@ public class HaptGloveCollidersVisualizer : MonoBehaviour
             return;
         }
 
-        PhysicsHandTrackingOpenXR openXR = hand.GetComponent<PhysicsHandTrackingOpenXR>();
         PhysicsHandTracking legacy = hand.GetComponent<PhysicsHandTracking>();
 
-        // Prefer the OpenXR component's root: on a v201 rig it is the one being re-pointed at
-        // each scene's hands, and the legacy component is switched off behind it.
         if (showTrackedHands)
         {
-            Transform tracked = openXR != null && openXR.handRoot != null ? openXR.handRoot
-                : legacy != null ? legacy.handRoot : null;
+            Transform tracked = legacy != null ? legacy.handRoot : null;
             if (tracked != null)
             {
                 roots.Add(new RootTarget(tracked, trackedHandColor));
@@ -312,8 +308,7 @@ public class HaptGloveCollidersVisualizer : MonoBehaviour
 
         if (showGhostRigs)
         {
-            Transform ghost = openXR != null && openXR.HexrRoot != null ? openXR.HexrRoot
-                : legacy != null ? legacy.HexrRoot : null;
+            Transform ghost = legacy != null ? legacy.HexrRoot : null;
             if (ghost != null)
             {
                 roots.Add(new RootTarget(ghost, ghostRigColor));
