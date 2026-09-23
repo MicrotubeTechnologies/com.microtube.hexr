@@ -72,6 +72,14 @@ actually installed, so nothing cross-backend is serialised.
 Full walkthrough in [Getting started in a new project](#getting-started-in-a-new-project)
 below, including the OpenXR-only `ProximityCheck` requirement.
 
+> **Upgrading to 0.9?** HEXR no longer has a ghost hand on either backend: the fingertip
+> and palm triggers sit on the SDK's tracked hand, where Auto Setup puts them.
+> `PhysicsHandTracking` is now `HexRTrackedHand` (same script GUID, so scenes keep it) and
+> only says which tracked hand each HexR hand follows. Code that referenced
+> `PhysicsHandTracking`, `HexrRoot` or the rotation offsets needs updating. A project with
+> its own copy of the rig under `Assets/`, or an unpacked rig in a scene, can strip the
+> ghost with **HexR → Migration → Remove Ghost Hand**, then re-run Auto Setup per scene.
+
 > **Upgrading from 0.2.x?** `package.json` no longer depends on
 > `com.meta.xr.sdk.interaction`, so a Meta project that relied on HexR to pull the SDK in
 > must now declare it itself. Nothing else changes — no scene or prefab migration.
@@ -91,13 +99,13 @@ that keeps its own `HaptGlove.dll` will collide with `HaptGlove.Runtime`.
   `HexRTrackedHand` (which tracked hand each HexR hand is, and where its joints are),
   `HapticFingerTrigger`, `HexRGrabbable`, `HexRUsable`,
   `FingerUseTracking`, `PressureTrackerMain`, `ProximityCheck`, `SpecialHaptics`,
-  `HaptGloveCollidersVisualizer`, `HexRDebugLogPanel`, `HexRPanelConnectButtons`.
+  `HaptGloveCollidersVisualizer`, and the floating menu under `UI/`.
 - `Runtime/MetaOVR/` (assembly `HexR.Runtime.MetaOVR`) — the only code that touches
   `Oculus.Interaction`. Excluded from the build entirely when the Meta SDK isn't installed.
   See "How the Meta OVR support stays optional" below.
-- `Runtime/UI/` — the `HexR Panel` prefab and its textures/material.
-- `Runtime/Prefabs/` — the `HexR Main` rig prefabs, `Pressure Controller`, hand menu and
-  grab audio. See below.
+- `Runtime/UI/` — textures used by the floating menu.
+- `Runtime/Prefabs/` — the `HexR Main` rig prefabs, `Pressure Controller` and grab audio.
+  See below.
 - `Runtime/HaptGlove/` (assembly `HaptGlove.Runtime`) — the HaptGlove runtime:
   `HaptGloveHandler`, `Haptics`, the BLE transport and the encode/decode layer.
 - `Runtime/Plugins/` — the native Bluetooth transports the runtime binds to. See below.
@@ -168,8 +176,8 @@ the Windows Editor; iOS support is opt-in and project-side.
 ## The rig (`Runtime/Prefabs/`)
 
 `HexR Main (OVR)` / `HexR Main (Open XR)` (the rig **HexR > Create HexR Rig** instantiates),
-`Pressure Controller`, `Hand Menu With Button Activation` and `Grab Audio` ship here, along
-with `New Material.mat` which they reference. They used to live in the consuming project's
+`Pressure Controller` and `Grab Audio` ship here, along with `New Material.mat` which they
+reference. They used to live in the consuming project's
 `Assets/HexRAssets/`, which meant a fresh install got the scripts and nothing to instantiate
 -- and `Pressure Controller` is not optional: every `HapticFingerTrigger` looks one up per
 scene and produces no haptics without it.
@@ -177,16 +185,20 @@ scene and produces no haptics without it.
 `HexRMenu` prefers a copy under `Assets/` when one exists, so a project that customised the
 rig in place keeps getting its own version rather than the packaged one.
 
-These still assume the project already has Meta's XR SDK and a hand-tracking camera rig in
-the scene -- the rig mirrors and instruments that, it does not create it.
+The two rigs differ only in their backend setting. Each hand is an object carrying
+`HaptGloveHandler`, `HexRTrackedHand` and `FingerUseTracking`; there is no hand model of
+HEXR's own. The rig assumes the scene already has a hand-tracking rig -- Meta's
+`OVRCameraRig` hands, or XRI's XR Hands setup -- and instruments that: Auto Setup, and the
+rebind after every scene load, put a trigger collider and `HapticFingerTrigger` on each
+fingertip and the palm of the tracked hand.
 
-**Known caveat:** the panel's text uses `Electronic Highway Sign SDF` from TextMesh Pro's
+**Known caveat:** the menu's text uses `Electronic Highway Sign SDF` from TextMesh Pro's
 *Examples & Extras*, which is an optional TMP import many projects skip. Without it the panel
 falls back to TMP's default font -- cosmetic only, nothing functional depends on it.
 
 Note that a package installed from a git URL or registry is **immutable**, so the
-`HexR > Migration` commands (which rewrite the rig prefab) only work where the package is
-embedded, as it is in this repo. They are one-off migrations for legacy projects; a fresh
+`HexR > Migration` commands only rewrite the rig prefabs where the package is embedded or
+local, as it is in this repo; elsewhere they work on `Assets/` copies and open scenes. They are one-off migrations for legacy projects; a fresh
 install has no need of them.
 
 ## Package dependencies
@@ -371,13 +383,8 @@ that dependency has to be bundled here too).
 - **`HaptGloveUI.cs`** moved into this package because the rig prefab has it on its root,
   but it is redundant: `HexRManager` has equivalent `ConnectLeftBT`/`ConnectRightBT`.
   Deleting it needs those buttons' `OnClick` targets re-wired by hand first.
-- **`HexRDebugLogPanel` is attached to nothing.** It was written to read logs on-headset
-  without adb, and no prefab or scene references it. (`HexRPanelConnectButtons`, previously
-  listed here too, *is* wired — `Runtime/UI/HexR Panel.prefab` and
-  `Runtime/Prefabs/HexR Main (OVR).prefab` both carry it — so the panel's connect toggles no
-  longer depend on per-scene overrides.)
-- **`SpecialHaptics.cs` and `FingerUseTracking.cs` have an unguarded `using UnityEditor;`.**
-  Untidy, but *not* a build blocker as previously recorded here: their editor classes are
+- **`SpecialHaptics.cs` has an unguarded `using UnityEditor;`.**
+  Untidy, but *not* a build blocker as previously recorded here: its editor class is
   correctly `#if UNITY_EDITOR`'d, nothing outside those blocks uses the namespace, and the
   built `Library/Bee/PlayerScriptAssemblies/HexR.Runtime.dll` carries no `UnityEditor`
   reference. Quest builds succeed.
