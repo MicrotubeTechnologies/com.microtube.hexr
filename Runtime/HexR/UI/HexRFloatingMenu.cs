@@ -73,6 +73,11 @@ public class HexRFloatingMenu : MonoBehaviour
              "in a scene that has none -- the section is skipped.")]
     public bool showDemoGroups = true;
 
+    [Tooltip("Show a HAPTICS readout: the value each finger and the palm of each glove was last " +
+             "sent, exactly as your code passed it in. For checking a haptic fires where and as " +
+             "hard as you meant without having to feel for it.")]
+    public bool showHapticsReadout = true;
+
     [Tooltip("Switch the old wrist menu off. Untick to run both while comparing them.")]
     public bool hideHandMenu = true;
 
@@ -106,6 +111,14 @@ public class HexRFloatingMenu : MonoBehaviour
     private const float k_GridGap = 12f;
     private const float k_Gap = 16f;
 
+    // The HAPTICS readout: one row per channel, a label column and a value column per hand. Not
+    // pressable, so none of the press-volume spacing above applies and the rows can sit tight.
+    private const int k_Channels = 6;
+    private const float k_ReadoutRowHeight = 22f;
+    private const float k_ReadoutRowGap = 4f;
+    private const float k_ReadoutLabelWidth = 76f;
+    private static readonly string[] k_ChannelNames = { "Thumb", "Index", "Middle", "Ring", "Pinky", "Palm" };
+
     private static readonly Color k_Background = new Color32(0x15, 0x18, 0x1E, 0xF5);
     private static readonly Color k_Header = new Color32(0x2D, 0x35, 0x42, 0xFF);
     private static readonly Color k_SectionLabel = new Color32(0x8A, 0x93, 0xA3, 0xFF);
@@ -131,6 +144,23 @@ public class HexRFloatingMenu : MonoBehaviour
     private readonly List<Button> sceneButtons = new List<Button>();
     private readonly List<Image> sceneButtonImages = new List<Image>();
     private readonly List<Image> demoButtonImages = new List<Image>();
+
+    // Readout cells, left hand's six channels then the right's. What each cell last showed is kept
+    // so the text is only rebuilt when a channel is triggered, and the last value survives a scene
+    // load, which rebuilds the cells but not the history.
+    private readonly TextMeshProUGUI[] readoutValues = new TextMeshProUGUI[2 * k_Channels];
+    private readonly Image[] readoutCells = new Image[2 * k_Channels];
+    private readonly int[] readoutShownCount = new int[2 * k_Channels];
+    private readonly bool[] readoutShownLit = new bool[2 * k_Channels];
+    private readonly float[] readoutLitUntil = new float[2 * k_Channels];
+    private readonly string[] readoutLast = new string[2 * k_Channels];
+
+    // How long a cell stays lit after a trigger even if the channel is already off again. A tap
+    // can be on and off inside one frame, and one frame of colour is not something anyone sees.
+    private const float k_ReadoutFlash = 0.2f;
+    private readonly HaptGlove.HaptGloveHandler[] readoutHands = new HaptGlove.HaptGloveHandler[2];
+    private bool readoutRepaint;
+    private float readoutNextResolve;
 
     private float pixelsToMetres;
     private Transform head;
@@ -204,6 +234,16 @@ public class HexRFloatingMenu : MonoBehaviour
         }
 
         AdoptScene();
+    }
+
+    private void Update()
+    {
+        if (!Application.isPlaying)
+        {
+            return;
+        }
+
+        UpdateHapticsReadout();
     }
 
     private void OnDestroy()
@@ -361,6 +401,9 @@ public class HexRFloatingMenu : MonoBehaviour
 
         manager.LeftBtText = leftStatus;
         manager.RightBtText = rightStatus;
+
+        readoutHands[0] = manager.leftHand;
+        readoutHands[1] = manager.rightHand;
 
         // The manager shows this on a failed or dropped connection so the user can retry. The
         // panel is always visible, so the call is a no-op -- the point is that it is no longer a
@@ -609,6 +652,7 @@ public class HexRFloatingMenu : MonoBehaviour
         y = BuildHeader(y);
         y = BuildGloveSection(y);
         y = BuildViewSection(y);
+        y = BuildHapticsSection(y);
         y = BuildSceneSection(y);
         y = BuildDemoSection(y);
 
@@ -668,6 +712,162 @@ public class HexRFloatingMenu : MonoBehaviour
         RefreshCollidersLabel();
 
         return y - k_ButtonHeight - k_Gap;
+    }
+
+    /// <summary>
+    /// What each glove channel was last told to do: "Thumb 1", "Index 0.5".
+    ///
+    /// Read from <see cref="HaptGlove.Haptics.GetChannelState"/>, which every haptic call records
+    /// on its way to the glove -- HEXRPressure, HEXRVibration, HEXRPulse and the ApplyHaptics call
+    /// HexRGrabbable makes -- so the readout covers every trigger in the
+    /// package without any of them having to report in. It is the command, not a measurement:
+    /// the glove sends no acknowledgment, so a value here means "sent", not "felt".
+    ///
+    /// The number is the one the caller passed, which is what makes it useful for tuning: 0-1 from
+    /// the current API, and the raw strength from ApplyHaptics (a grabbable's Haptic Strength,
+    /// 10 by default). A lit cell is a channel that is on now, or was triggered in the last fifth of
+    /// a second. When it goes off the value stays, dimmed, because a tap is over long before anyone
+    /// can read it.
+    /// </summary>
+    private float BuildHapticsSection(float y)
+    {
+        if (!showHapticsReadout)
+        {
+            return y;
+        }
+
+        y = SectionLabel("HAPTICS", y);
+
+        float valueWidth = (k_PanelWidthPx - k_Margin * 2f - k_ReadoutLabelWidth - k_GridGap) * 0.5f;
+        float leftX = k_Margin + k_ReadoutLabelWidth;
+        float rightX = leftX + valueWidth + k_GridGap;
+
+        TextMeshProUGUI leftHead = NewLabel("Left", panel, "Left", 11f, FontStyles.Bold, k_SectionLabel,
+            TextAlignmentOptions.Center);
+        Place(leftHead.rectTransform, leftX, y, valueWidth, k_ReadoutRowHeight);
+        TextMeshProUGUI rightHead = NewLabel("Right", panel, "Right", 11f, FontStyles.Bold, k_SectionLabel,
+            TextAlignmentOptions.Center);
+        Place(rightHead.rectTransform, rightX, y, valueWidth, k_ReadoutRowHeight);
+        y -= k_ReadoutRowHeight;
+
+        for (int c = 0; c < k_Channels; c++)
+        {
+            TextMeshProUGUI name = NewLabel(k_ChannelNames[c], panel, k_ChannelNames[c], 13f,
+                FontStyles.Normal, k_TextDim, TextAlignmentOptions.Left);
+            Place(name.rectTransform, k_Margin, y, k_ReadoutLabelWidth, k_ReadoutRowHeight);
+
+            for (int hand = 0; hand < 2; hand++)
+            {
+                int i = hand * k_Channels + c;
+                Image cell = NewImage(k_ChannelNames[c] + (hand == 0 ? " L" : " R"), panel, k_ButtonNormal);
+                Place(cell.rectTransform, hand == 0 ? leftX : rightX, y, valueWidth, k_ReadoutRowHeight);
+                cell.raycastTarget = false;
+
+                TextMeshProUGUI value = NewLabel("Value", cell.rectTransform, "-", 13f, FontStyles.Normal,
+                    k_TextDim, TextAlignmentOptions.Center);
+                value.enableAutoSizing = true;
+                value.fontSizeMin = 8f;
+                value.fontSizeMax = 13f;
+                Stretch(value.rectTransform, 6f, 0f);
+
+                readoutCells[i] = cell;
+                readoutValues[i] = value;
+            }
+
+            y -= k_ReadoutRowHeight + k_ReadoutRowGap;
+        }
+
+        // New cells start blank, so the first poll has to draw every one of them, including the
+        // last values carried over from before a scene load.
+        readoutRepaint = true;
+
+        return y - k_Gap + k_ReadoutRowGap;
+    }
+
+    private void UpdateHapticsReadout()
+    {
+        if (readoutValues[0] == null)
+        {
+            return;
+        }
+
+        // The handlers are bound with the manager on every scene load. This only covers a rig that
+        // turns up later than the panel, and is rate-limited because the lookup can walk the scene.
+        if ((readoutHands[0] == null || readoutHands[1] == null) && Time.unscaledTime >= readoutNextResolve)
+        {
+            readoutNextResolve = Time.unscaledTime + 1f;
+            HexRManager manager = ResolveManager();
+            if (manager != null)
+            {
+                readoutHands[0] = manager.leftHand;
+                readoutHands[1] = manager.rightHand;
+            }
+        }
+
+        for (int hand = 0; hand < 2; hand++)
+        {
+            HaptGlove.HaptGloveHandler handler = readoutHands[hand];
+            HaptGlove.Haptics haptics = handler != null ? handler.haptics : null;
+
+            for (int c = 0; c < k_Channels; c++)
+            {
+                int i = hand * k_Channels + c;
+                HaptGlove.Haptics.Finger finger = (HaptGlove.Haptics.Finger)c;
+                bool changed = readoutRepaint;
+
+                bool on = false;
+                if (haptics != null)
+                {
+                    on = haptics.GetChannelState(finger).Mode != HaptGlove.Haptics.HapticMode.Off;
+
+                    // The activation count, not the state, is what says "triggered": it moves for
+                    // a tap that was already off by this frame, and for a repeat of the same value.
+                    int count = haptics.GetActivationCount(finger);
+                    if (count != readoutShownCount[i])
+                    {
+                        readoutShownCount[i] = count;
+                        readoutLast[i] = FormatChannel(haptics.GetLastActiveState(finger));
+                        readoutLitUntil[i] = Time.unscaledTime + k_ReadoutFlash;
+                        changed = true;
+                    }
+                }
+
+                bool lit = on || Time.unscaledTime < readoutLitUntil[i];
+                if (!changed && lit == readoutShownLit[i])
+                {
+                    continue;
+                }
+
+                readoutShownLit[i] = lit;
+                readoutValues[i].text = readoutLast[i] ?? "-";
+                readoutValues[i].color = lit ? k_Text : k_TextDim;
+                readoutCells[i].color = lit ? k_Accent : k_ButtonNormal;
+            }
+        }
+
+        readoutRepaint = false;
+    }
+
+    /// <summary>"0.5" for pressure, "0.5  30Hz" for vibration, "0.5  pulse" for pulses.</summary>
+    private static string FormatChannel(HaptGlove.Haptics.ChannelState state)
+    {
+        // Invariant, so a headset set to a comma-decimal locale still reads 0.5 rather than 0,5.
+        System.Globalization.CultureInfo invariant = System.Globalization.CultureInfo.InvariantCulture;
+        string value = state.Intensity.ToString("0.##", invariant);
+
+        switch (state.Mode)
+        {
+            case HaptGlove.Haptics.HapticMode.Vibration:
+                // ApplyHaptics marks its low-pressure mode with a frequency of 255, which is a
+                // flag rather than a rate, so it gets no Hz.
+                return state.Frequency > 0f && state.Frequency < 255f
+                    ? value + "  " + state.Frequency.ToString("0.#", invariant) + "Hz"
+                    : value + "  vib";
+            case HaptGlove.Haptics.HapticMode.Pulse:
+                return value + "  pulse";
+            default:
+                return value;
+        }
     }
 
     /// <summary>
@@ -929,6 +1129,8 @@ public class HexRFloatingMenu : MonoBehaviour
         demoButtonImages.Clear();
         sceneButtons.Clear();
         sceneButtonImages.Clear();
+        System.Array.Clear(readoutValues, 0, readoutValues.Length);
+        System.Array.Clear(readoutCells, 0, readoutCells.Length);
     }
 
 #if UNITY_EDITOR

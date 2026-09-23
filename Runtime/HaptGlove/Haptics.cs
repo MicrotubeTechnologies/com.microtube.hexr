@@ -178,11 +178,58 @@ namespace HaptGlove
 
         // Mirrors the last command sent to each channel. This is commanded intent, not
         // confirmed device state - there is no hardware acknowledgment for these commands.
-        private ChannelState[] channelState = new ChannelState[6];
+        private readonly ChannelLog channelState = new ChannelLog();
 
         public ChannelState GetChannelState(Finger finger)
         {
             return channelState[(int)finger];
+        }
+
+        /// <summary>
+        /// The last command that turned this channel on, kept after it goes off again. A tap can
+        /// be switched on and off inside a single frame, and anything polling GetChannelState --
+        /// the floating menu's readout -- would never see it.
+        /// </summary>
+        public ChannelState GetLastActiveState(Finger finger)
+        {
+            return channelState.LastActive((int)finger);
+        }
+
+        /// <summary>How many commands have turned this channel on. Changes on every trigger,
+        /// including a repeat of the same value, which comparing states alone would miss.</summary>
+        public int GetActivationCount(Finger finger)
+        {
+            return channelState.ActivationCount((int)finger);
+        }
+
+        /// <summary>
+        /// The per-channel record, indexed like the array it replaced so every command above writes
+        /// to it unchanged. The setter is the one place that sees each command go by, which is
+        /// what lets it keep the last "on" state and count activations for all of them.
+        /// </summary>
+        private sealed class ChannelLog
+        {
+            private readonly ChannelState[] current = new ChannelState[6];
+            private readonly ChannelState[] lastActive = new ChannelState[6];
+            private readonly int[] activations = new int[6];
+
+            public ChannelState this[int channel]
+            {
+                get { return current[channel]; }
+                set
+                {
+                    current[channel] = value;
+                    if (value.Mode != HapticMode.Off)
+                    {
+                        lastActive[channel] = value;
+                        activations[channel]++;
+                    }
+                }
+            }
+
+            public ChannelState LastActive(int channel) { return lastActive[channel]; }
+
+            public int ActivationCount(int channel) { return activations[channel]; }
         }
 
         private byte[] SetHapticsState(Finger finger, bool state)
