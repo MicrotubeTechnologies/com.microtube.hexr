@@ -125,8 +125,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 436280968431147010}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: -0.24443, z: 0, w: 0.96966}
-  m_LocalPosition: {x: -0.35, y: 1.4, z: 0.65}
+  m_LocalRotation: {x: 0.032406807, y: -0.7154421, z: 0.018506149, w: 0.6976747}
+  m_LocalPosition: {x: -0.58496004, y: 1.167854, z: -0.019615225}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -147,7 +147,7 @@ MonoBehaviour:
   spawnDistance: 0.65
   spawnHeightOffset: -0.2
   spawnSideOffset: -0.35
-  panelWidth: 0.32
+  panelWidth: 0.26
   showSceneSwitcher: 1
   showDemoGroups: 1
   hideHandMenu: 1

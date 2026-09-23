@@ -61,7 +61,7 @@ public class HexRFloatingMenu : MonoBehaviour
 
     [Header("Panel")]
     [Tooltip("Panel width in metres. Height follows from the contents.")]
-    public float panelWidth = 0.32f;
+    public float panelWidth = 0.26f;
 
     [Header("Behaviour")]
     [Tooltip("Show a SCENES button per scene in Build Settings. For a tutorial that is split " +
@@ -89,7 +89,7 @@ public class HexRFloatingMenu : MonoBehaviour
     // keep a world-space canvas crisp: font sizes and paddings stay in numbers that read like UI
     // numbers instead of fractions of a millimetre.
     // Sizes below are panel pixels; panelWidth metres maps onto k_PanelWidthPx of them, so at
-    // the 0.32m default one pixel is about 0.9mm. That conversion is why the gaps are as large as
+    // the 0.26m default one pixel is about 0.72mm. That conversion is why the gaps are as large as
     // they look: every button is a physical press volume now, and a fingertip is 15-20mm across,
     // so anything under about a centimetre of separation lets one poke enter two buttons.
     private const float k_PanelWidthPx = 360f;
