@@ -51,9 +51,13 @@ namespace HexR.OpenXR
                 return;
             }
 
+            // handRoot is the tracked wrist, and XRI keeps the interactors beside the hand visual,
+            // not under it -- searching the wrist's subtree found nothing, which left grab gating
+            // off and every grab silent. Search from the level that actually holds them, and leave
+            // searchRoot unassigned so the source climbs from the current hand after a scene load.
             OpenXRHandNearSource source = Attach(tracker);
-            source.searchRoot = handRoot;
-            source.AutoFind(handRoot, label);
+            source.searchRoot = null;
+            source.AutoFind(OpenXRHandNearSource.ClimbToInteractors(handRoot), label);
 
 #if UNITY_EDITOR
             UnityEditor.EditorUtility.SetDirty(source);

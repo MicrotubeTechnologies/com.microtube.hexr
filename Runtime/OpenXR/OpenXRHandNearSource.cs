@@ -72,33 +72,33 @@ namespace HexR.OpenXR
             AutoFind(root, name);
         }
 
-        /// <summary>
-        /// The interactors are siblings of the tracked hand visual rather than children of it, so
-        /// walking up from the hand root is what actually finds them.
-        /// </summary>
         private Transform ResolveSearchRoot()
         {
-            if (searchRoot != null)
+            Transform start = searchRoot;
+            if (start == null)
             {
-                return searchRoot;
+                HexRTrackedHand tracking = GetComponentInParent<HexRTrackedHand>();
+                start = tracking != null ? tracking.handRoot : null;
             }
 
-            HexRTrackedHand tracking = GetComponentInParent<HexRTrackedHand>();
-            Transform t = tracking != null ? tracking.handRoot : null;
-            if (t == null)
-            {
-                return null;
-            }
+            return ClimbToInteractors(start);
+        }
 
-            // Climb until something in this subtree owns an interactor.
-            while (t != null)
+        /// <summary>
+        /// The nearest ancestor of <paramref name="from"/> (itself included) whose subtree holds an
+        /// XRI interactor. XRI's interactors are siblings of the tracked hand visual rather than
+        /// children of it -- Left Hand/{Left Hand Interaction Visual/L_Wrist, Direct Interactor, ...}
+        /// -- so starting at the wrist and searching down finds nothing; walking up is what reaches
+        /// them. Applied to an assigned searchRoot too, so one set to the wrist still works.
+        /// </summary>
+        public static Transform ClimbToInteractors(Transform from)
+        {
+            for (Transform t = from; t != null; t = t.parent)
             {
                 if (t.GetComponentInChildren<XRBaseInteractor>(true) != null)
                 {
                     return t;
                 }
-
-                t = t.parent;
             }
 
             return null;

@@ -234,9 +234,20 @@ public class HaptGloveCollidersVisualizer : MonoBehaviour
     {
         foreach (GameObject obj in visualizers)
         {
-            if (obj != null)
+            if (obj == null)
+            {
+                continue;
+            }
+
+            // Destroy is refused outside Play Mode, which left the solids in place whenever the
+            // colliders were shown from the Editor.
+            if (Application.isPlaying)
             {
                 Destroy(obj);
+            }
+            else
+            {
+                DestroyImmediate(obj);
             }
         }
         visualizers.Clear();
@@ -297,6 +308,31 @@ public class HaptGloveCollidersVisualizer : MonoBehaviour
         }
     }
 
+    // The collider's own layer when the camera draws it, else the first layer it does draw. The
+    // solids used to always take the collider's layer, on the theory that a hidden hand should
+    // hide its solids too. But a rig hides its hand for how it looks, not to hide the touch
+    // points: XRI's hands setup keeps the whole hand on a culled layer, so on PICO every solid
+    // was drawn invisible and Show Colliders did nothing. The solids have no collider of their
+    // own, so the layer changes only whether they are seen.
+    private static int VisibleLayerFor(int colliderLayer)
+    {
+        Camera camera = Camera.main;
+        if (camera == null || (camera.cullingMask & (1 << colliderLayer)) != 0)
+        {
+            return colliderLayer;
+        }
+
+        for (int layer = 0; layer < 32; layer++)
+        {
+            if ((camera.cullingMask & (1 << layer)) != 0)
+            {
+                return layer;
+            }
+        }
+
+        return colliderLayer;
+    }
+
     private static bool HasVisualizerChild(Transform colliderTransform)
     {
         foreach (Transform child in colliderTransform)
@@ -317,14 +353,14 @@ public class HaptGloveCollidersVisualizer : MonoBehaviour
             return null;
         }
 
-        GameObject solid = new GameObject(VisualizerName);
+        // DontSave: diagnostic geometry, never part of the scene. Shown from the Editor and saved,
+        // it would otherwise be written into the scene under every tracked joint.
+        GameObject solid = new GameObject(VisualizerName) { hideFlags = HideFlags.DontSave };
         solid.transform.SetParent(collider.transform, false);
         solid.transform.localPosition = GetColliderLocalPosition(collider);
         solid.transform.localRotation = GetColliderLocalRotation(collider);
         solid.transform.localScale = GetColliderLocalScale(collider);
-        // So a hand rig on a layer the camera renders keeps its solids visible, and one on a
-        // hidden layer hides them too -- matching whatever the collider itself does.
-        solid.layer = collider.gameObject.layer;
+        solid.layer = VisibleLayerFor(collider.gameObject.layer);
 
         solid.AddComponent<MeshFilter>().sharedMesh = mesh;
 
@@ -445,7 +481,9 @@ public class HaptGloveCollidersVisualizer : MonoBehaviour
         temp.SetActive(false);
         // sharedMesh is one of Unity's built-in assets, so it outlives the object it came from.
         Mesh mesh = temp.GetComponent<MeshFilter>().sharedMesh;
-        Destroy(temp);
+        // Immediate, not Destroy: Destroy is refused outside Play Mode, which left the primitive
+        // behind in the open scene -- and it is never used again, so there is nothing to defer.
+        DestroyImmediate(temp);
 
         primitiveMeshes[type] = mesh;
         return mesh;
