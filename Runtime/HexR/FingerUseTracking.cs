@@ -1,15 +1,21 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using TMPro;
-using HaptGlove;
-using static UnityEngine.GraphicsBuffer;
-using System.Linq;
+#if UNITY_EDITOR
 using UnityEditor;
-
+#endif
 
 namespace HexR
 {
+    // How curled each finger is, from 0 (curled) to 1 (extended): the distance from each
+    // fingertip to its knuckle, normalised against the widest and narrowest it has seen.
+    // HexRUsable, HexRGrabbable's open-hand release, SpecialHaptics' Hand Squeeze and
+    // HexRInteractableHaptics' grip-scaled pressure all read it.
+    //
+    // The joints are the tracked hand's, found through the HexRTrackedHand on the same object.
+    // Any reference left empty is filled in at runtime -- and filled in again once a scene load
+    // destroys the hand it pointed at -- so nothing has to be wired per scene. Assign one by
+    // hand only to override it.
+    [RequireComponent(typeof(HexRTrackedHand))]
     public class FingerUseTracking : MonoBehaviour
     {
         public GameObject IndexTip, IndexKnuckle, MiddleTip, MiddleKnuckle, RingTip, RingKnuckle, LittleTip, LittleKnuckle, ThumbTip, ThumbKnuckle;
@@ -19,24 +25,43 @@ namespace HexR
         private float IndexLargest, MiddleLargest, RingLargest, LittleLargest, ThumbLargest;
         private float IndexSmallest, MiddleSmallest, RingSmallest, LittleSmallest, ThumbSmallest;
 
-        internal HexRManager haptGloveManager;
-        internal HexRTrackedHand haptHandTracking;
         [HideInInspector]
         public float IndexUse, MiddleUse, RingUse, LittleUse, ThumbUse;
-        // Start is called before the first frame update
+
+        private HexRTrackedHand trackedHand;
+
+        // Resolution walks the hand's hierarchy, so while the hand is missing (between scenes,
+        // or before tracking starts) it is retried a few times a second rather than every frame.
+        private const float ResolveInterval = 0.25f;
+        private float nextResolveTime;
+
         void Start()
         {
+            trackedHand = GetComponent<HexRTrackedHand>();
+
             // Initialize smallest values to a very large number
             IndexSmallest = MiddleSmallest = RingSmallest = LittleSmallest = ThumbSmallest = float.MaxValue;
 
             // Initialize largest values to a very small number
             IndexLargest = MiddleLargest = RingLargest = LittleLargest = ThumbLargest = float.MinValue;
-
         }
 
-        // Update is called once per frame
         void Update()
         {
+            if (!HasAllJoints())
+            {
+                if (Time.unscaledTime < nextResolveTime)
+                {
+                    return;
+                }
+                nextResolveTime = Time.unscaledTime + ResolveInterval;
+                FillFromTrackedHand(false);
+                if (!HasAllJoints())
+                {
+                    return;
+                }
+            }
+
             // Calculate distances
             IndexDistance = Vector3.Distance(IndexTip.transform.position, IndexKnuckle.transform.position);
             MiddleDistance = Vector3.Distance(MiddleTip.transform.position, MiddleKnuckle.transform.position);
@@ -55,6 +80,51 @@ namespace HexR
             if(DebugText != null)
             {
                 DebugText.text = $"{IndexUse:F2} | {MiddleUse:F2} | {RingUse:F2} | {LittleUse:F2} | {ThumbUse:F2}";
+            }
+        }
+
+        private bool HasAllJoints()
+        {
+            return IndexTip != null && IndexKnuckle != null && MiddleTip != null && MiddleKnuckle != null
+                && RingTip != null && RingKnuckle != null && LittleTip != null && LittleKnuckle != null
+                && ThumbTip != null && ThumbKnuckle != null;
+        }
+
+        /// <summary>
+        /// Fills the joint references from the tracked hand. With <paramref name="overwrite"/>
+        /// false only empty (or destroyed) references are filled, so a hand-assigned one wins.
+        /// Returns false when the tracked hand isn't available to resolve against.
+        /// </summary>
+        public bool FillFromTrackedHand(bool overwrite)
+        {
+            if (trackedHand == null)
+            {
+                trackedHand = GetComponent<HexRTrackedHand>();
+            }
+            if (trackedHand == null || trackedHand.handRoot == null)
+            {
+                return false;
+            }
+
+            Fill(ref IndexTip, ref IndexKnuckle, HapticFingerTrigger.FingerType.Index, overwrite);
+            Fill(ref MiddleTip, ref MiddleKnuckle, HapticFingerTrigger.FingerType.Middle, overwrite);
+            Fill(ref RingTip, ref RingKnuckle, HapticFingerTrigger.FingerType.Ring, overwrite);
+            Fill(ref LittleTip, ref LittleKnuckle, HapticFingerTrigger.FingerType.Little, overwrite);
+            Fill(ref ThumbTip, ref ThumbKnuckle, HapticFingerTrigger.FingerType.Thumb, overwrite);
+            return true;
+        }
+
+        private void Fill(ref GameObject tip, ref GameObject knuckle, HapticFingerTrigger.FingerType finger, bool overwrite)
+        {
+            if (overwrite || tip == null)
+            {
+                Transform t = trackedHand.ResolveRawFingerJoint(finger);
+                tip = t != null ? t.gameObject : null;
+            }
+            if (overwrite || knuckle == null)
+            {
+                Transform k = trackedHand.ResolveKnuckleJoint(finger);
+                knuckle = k != null ? k.gameObject : null;
             }
         }
 
@@ -94,7 +164,7 @@ namespace HexR
 
         public bool isHandOpen()
         {
-            if(IndexUse > 0.95 
+            if(IndexUse > 0.95
                 && MiddleUse > 0.95
                 && RingUse > 0.95
                 && ThumbUse > 0.9
@@ -107,230 +177,32 @@ namespace HexR
                 return false;
             }
         }
-
-        public void AutoFillFields()
-        {
-
-        }
-         
     }
+
 #if UNITY_EDITOR
     [CustomEditor(typeof(FingerUseTracking))]
     public class FingerUseTrackingEditorSetting : Editor
     {
         public override void OnInspectorGUI()
         {
+            EditorGUILayout.HelpBox("Empty joints are found on the tracked hand at runtime, and found again after a scene load. "
+                + "Assign one only to override it.", MessageType.None);
 
-            // Get reference to the target script
-            FingerUseTracking controller = (FingerUseTracking)target;
+            DrawDefaultInspector();
 
-         HexRManager haptGloveManager = controller.GetComponentInParent<HexRManager>();
-         HexRTrackedHand haptHandTracking= controller.gameObject.GetComponent<HexRTrackedHand>();
+            GUILayout.Space(10);
 
-            #region Editor GUI for hexr panel
-            // Create a tooltip for the slider
-            GUIContent IndexTipTool = new GUIContent(
-                "Index Tip",
-                "Tip of the index finger"
-            );
-            // Create a tooltip for the slider
-            GUIContent IndexKnuckleTool = new GUIContent(
-                "Index Knuckle",
-                "Base of the index finger"
-            );
-        // Create a tooltip for the slider
-        GUIContent MiddleTipTool = new GUIContent(
-           "Index Tip",
-           "Tip of the index finger"
-       );
-        // Create a tooltip for the slider
-        GUIContent MiddleKnuckleTool = new GUIContent(
-            "Index Knuckle",
-            "Base of the index finger"
-        );
-        // Create a tooltip for the slider
-        GUIContent RingTipTool = new GUIContent(
-           "Index Tip",
-           "Tip of the index finger"
-       );
-        // Create a tooltip for the slider
-        GUIContent RingKnuckleTool = new GUIContent(
-            "Index Knuckle",
-            "Base of the index finger"
-        );
-        // Create a tooltip for the slider
-        GUIContent LittleTipTool = new GUIContent(
-           "Index Tip",
-           "Tip of the index finger"
-       );
-        // Create a tooltip for the slider
-        GUIContent LittleKnuckleTool = new GUIContent(
-            "Index Knuckle",
-            "Base of the index finger"
-        );
-        // Create a tooltip for the slider
-        GUIContent ThumbTipTool = new GUIContent(
-           "Index Tip",
-           "Tip of the index finger"
-       );
-        // Create a tooltip for the slider
-        GUIContent ThumbKnuckleTool = new GUIContent(
-            "Thumb Knuckle",
-            "Base of the thumb"
-        );
-            GUIContent DebugtextTool = new GUIContent(
-    "Optional Debug Text",
-    "Shows the value of each finger open or close."
-);
-
-            controller.IndexTip = (GameObject)EditorGUILayout.ObjectField(IndexTipTool, controller.IndexTip, typeof(GameObject), true);
-            controller.IndexKnuckle = (GameObject)EditorGUILayout.ObjectField(IndexKnuckleTool, controller.IndexKnuckle, typeof(GameObject), true);
-            controller.MiddleTip = (GameObject)EditorGUILayout.ObjectField(MiddleTipTool, controller.MiddleTip, typeof(GameObject), true);
-            controller.MiddleKnuckle = (GameObject)EditorGUILayout.ObjectField(MiddleKnuckleTool, controller.MiddleKnuckle, typeof(GameObject), true);
-            controller.RingTip = (GameObject)EditorGUILayout.ObjectField(RingTipTool, controller.RingTip, typeof(GameObject), true);
-            controller.RingKnuckle = (GameObject)EditorGUILayout.ObjectField(RingKnuckleTool, controller.RingKnuckle, typeof(GameObject), true);
-            controller.LittleTip = (GameObject)EditorGUILayout.ObjectField(LittleTipTool, controller.LittleTip, typeof(GameObject), true);
-            controller.LittleKnuckle = (GameObject)EditorGUILayout.ObjectField(LittleKnuckleTool, controller.LittleKnuckle, typeof(GameObject), true);
-            controller.ThumbTip = (GameObject)EditorGUILayout.ObjectField(ThumbTipTool, controller.ThumbTip, typeof(GameObject), true);
-            controller.ThumbKnuckle = (GameObject)EditorGUILayout.ObjectField(ThumbKnuckleTool, controller.ThumbKnuckle, typeof(GameObject), true);
-            controller.DebugText = (TextMeshProUGUI)EditorGUILayout.ObjectField(DebugtextTool, controller.DebugText, typeof(TextMeshProUGUI), true);
-            #endregion
-
-            // Add vertical spacing
-            GUILayout.Space(15); // Adds 10 pixels of space
-
-            if (GUILayout.Button("Auto Set Up "))
+            if (GUILayout.Button(new GUIContent("Fill From Tracked Hand", "Resolve every joint from this hand's HexRTrackedHand.handRoot now, replacing what's assigned.")))
             {
-
-                if (haptGloveManager.XRFramework == HexRManager.Options.OpenXR)
+                FingerUseTracking tracking = (FingerUseTracking)target;
+                Undo.RecordObject(tracking, "Fill FingerUseTracking joints");
+                if (!tracking.FillFromTrackedHand(true))
                 {
-                    if(haptHandTracking.handType == HexRTrackedHand.HandType.Left)
-                    {
-                        try
-                        {
-                            // Directly find inactive GameObjects
-                            controller.IndexTip = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "L_IndexTip");
-                            controller.IndexKnuckle = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "L_IndexProximal");
-                            controller.MiddleTip = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "L_MiddleTip");
-                            controller.MiddleKnuckle = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "L_MiddleProximal");
-                            controller.RingTip = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "L_RingTip");
-                            controller.RingKnuckle = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "L_RingProximal");
-                            controller.LittleTip = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "L_LittleTip");
-                            controller.LittleKnuckle = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "L_LittleProximal");
-                            controller.ThumbTip = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "L_ThumbTip");
-                            controller.ThumbKnuckle = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "L_ThumbMetacarpal");
-
-                            Debug.Log("Left Finger Use Tracking Set Up Complete");
-                        }
-                        catch
-                        {
-                            Debug.Log("FingerUseTracking is not set up, Manual Set up needed");
-
-                        }
-                    }
-                    else //Right
-                    {
-                        try
-                        {
-                            // Directly find inactive GameObjects
-                            controller.IndexTip = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "R_IndexTip");
-                            controller.IndexKnuckle = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "R_IndexProximal");
-                            controller.MiddleTip = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "R_MiddleTip");
-                            controller.MiddleKnuckle = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "R_MiddleProximal");
-                            controller.RingTip = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "R_RingTip");
-                            controller.RingKnuckle = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "R_RingProximal");
-                            controller.LittleTip = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "R_LittleTip");
-                            controller.LittleKnuckle = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "R_LittleProximal");
-                            controller.ThumbTip = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "R_ThumbTip");
-                            controller.ThumbKnuckle = HexRCompat.FindAll<GameObject>(true).FirstOrDefault(obj => obj.name == "R_ThumbMetacarpal");
-
-
-                            Debug.Log("Right Finger Use Tracking Set Up Complete");
-                        }
-                        catch
-                        {
-                            Debug.Log("FingerUseTracking is not set up, Manual Set up needed");
-
-                        }
-                    }
- 
+                    Debug.LogWarning("[HexR] " + tracking.name + ": HexRTrackedHand.handRoot isn't assigned -- run HexR > Troubleshoot > Re-run Auto Setup first.", tracking);
                 }
-
-                else if (haptGloveManager.XRFramework == HexRManager.Options.MetaOVR)
-                {
-                    if (haptHandTracking.handType == HexRTrackedHand.HandType.Left)
-                    {
-                        try
-                        {
-                            Transform commonParent = GameObject.Find("Left Hand Physics").transform;
-
-                            // Get all child objects recursively (including inactive objects)
-                            Transform[] children = commonParent.GetComponentsInChildren<Transform>(true);
-
-                            // Find child objects by their names
-                            controller.IndexTip = children.FirstOrDefault(t => t.name == "l_index_finger_tip_marker")?.gameObject;
-                            controller.IndexKnuckle = children.FirstOrDefault(t => t.name == "L_Index_1")?.gameObject;
-                            controller.MiddleTip = children.FirstOrDefault(t => t.name == "l_middle_finger_tip_marker")?.gameObject;
-                            controller.MiddleKnuckle = children.FirstOrDefault(t => t.name == "L_Middle_1")?.gameObject;
-                            controller.RingTip = children.FirstOrDefault(t => t.name == "l_ring_finger_tip_marker")?.gameObject;
-                            controller.RingKnuckle = children.FirstOrDefault(t => t.name == "L_Ring_1")?.gameObject;
-                            controller.LittleTip = children.FirstOrDefault(t => t.name == "l_pinky_finger_tip_marker")?.gameObject;
-                            controller.LittleKnuckle = children.FirstOrDefault(t => t.name == "L_Pinky_1")?.gameObject;
-                            controller.ThumbTip = children.FirstOrDefault(t => t.name == "l_thumb_finger_tip_marker")?.gameObject;
-                            controller.ThumbKnuckle = children.FirstOrDefault(t => t.name == "L_Thumb_1")?.gameObject;
-
-                            Debug.Log("Left Finger Use Tracking Set Up Complete");
-                        }
-                        catch
-                        {
-                            Debug.Log("FingerUseTracking is not set up, Manual Set up needed");
-
-                        }
-                    }
-                    else //Right
-                    {
-                        try
-                        {
-                            Transform commonParent = GameObject.Find("Right Hand Physics").transform;
-
-                            // Get all child objects recursively (including inactive objects)
-                            Transform[] children = commonParent.GetComponentsInChildren<Transform>(true);
-
-                            // Find child objects by their names
-                            controller.IndexTip = children.FirstOrDefault(t => t.name == "r_index_finger_tip_marker")?.gameObject;
-                            controller.IndexKnuckle = children.FirstOrDefault(t => t.name == "R_Index_1")?.gameObject;
-                            controller.MiddleTip = children.FirstOrDefault(t => t.name == "r_middle_finger_tip_marker")?.gameObject;
-                            controller.MiddleKnuckle = children.FirstOrDefault(t => t.name == "R_Middle_1")?.gameObject;
-                            controller.RingTip = children.FirstOrDefault(t => t.name == "r_ring_finger_tip_marker")?.gameObject;
-                            controller.RingKnuckle = children.FirstOrDefault(t => t.name == "R_Ring_1")?.gameObject;
-                            controller.LittleTip = children.FirstOrDefault(t => t.name == "r_pinky_finger_tip_marker")?.gameObject;
-                            controller.LittleKnuckle = children.FirstOrDefault(t => t.name == "R_Pinky_1")?.gameObject;
-                            controller.ThumbTip = children.FirstOrDefault(t => t.name == "r_thumb_finger_tip_marker")?.gameObject;
-                            controller.ThumbKnuckle = children.FirstOrDefault(t => t.name == "R_Thumb_1")?.gameObject;
-
-
-
-                            Debug.Log("Right Finger Use Tracking Set Up Complete");
-                        }
-                        catch
-                        {
-                            Debug.Log("FingerUseTracking is not set up, Manual Set up needed");
-
-                        }
-                    }
-
-                }
-
-                EditorUtility.SetDirty(controller); // Mark as dirty to save changes
-            }
-            // Save changes
-            if (GUI.changed)
-            {
-                EditorUtility.SetDirty(target);
+                EditorUtility.SetDirty(tracking);
             }
         }
     }
-
 #endif
 }
-

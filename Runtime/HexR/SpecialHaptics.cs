@@ -629,10 +629,9 @@ namespace HexR
 
         private bool warnedSqueezeUnavailable;
 
-        // The Hand Squeeze effect is the one effect that needs FingerUseTracking, and that
-        // component is no longer on the rig -- it measured curl against the ghost hand
-        // joints, which were removed. Say so once rather than every trigger frame, and
-        // leave the effect inert instead of throwing.
+        // The Hand Squeeze effect is the one effect that needs FingerUseTracking. Both rig
+        // prefabs carry one on each hand, but a hand-built rig may not. Say so once rather
+        // than every trigger frame, and leave the effect inert instead of throwing.
         private void WarnSqueezeUnavailable()
         {
             if (warnedSqueezeUnavailable)
@@ -641,9 +640,9 @@ namespace HexR
             }
             warnedSqueezeUnavailable = true;
 
-            Debug.LogWarning("[HexR] " + name + ": Hand Squeeze needs a FingerUseTracking on the hand, and the "
-                + "rig no longer ships one, so this zone will not fire OnSqueezeEventTrigger. Add the component "
-                + "and assign its tip/knuckle joints if you need squeeze detection.", this);
+            Debug.LogWarning("[HexR] " + name + ": Hand Squeeze needs a FingerUseTracking on each hand of the rig, "
+                + "and this rig's hands have none, so this zone will not fire OnSqueezeEventTrigger. Add one next to "
+                + "each hand's HexRTrackedHand -- it finds its joints itself.", this);
         }
 
         #endregion

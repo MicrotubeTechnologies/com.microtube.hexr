@@ -67,6 +67,19 @@ namespace HexR
                 : WalkChain(metacarpal, 0, 0, 0, 0);
         }
 
+        // The joint a finger curls about, for FingerUseTracking's tip-to-knuckle distance: the
+        // proximal joint, except on the thumb, whose metacarpal is the one that moves.
+        public Transform ResolveKnuckleJoint(HapticFingerTrigger.FingerType finger)
+        {
+            if (handRoot == null || finger == HapticFingerTrigger.FingerType.Palm) return null;
+
+            Transform metacarpal = FindJointByName(HandPrefix + finger + "Metacarpal")
+                ?? FindJointByName(MetaOpenXRPrefix + finger + "Metacarpal");
+            if (metacarpal == null) return null;
+
+            return finger == HapticFingerTrigger.FingerType.Thumb ? metacarpal : WalkChain(metacarpal, 0);
+        }
+
         public Transform ResolveRawPalmJoint()
         {
             if (handRoot == null) return null;
