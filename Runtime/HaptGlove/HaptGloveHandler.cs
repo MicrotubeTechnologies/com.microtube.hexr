@@ -411,6 +411,7 @@ namespace HaptGlove
         {
             if (ble.isConnected)
             {
+                ReleaseAllNow("disconnect");
                 ble.Close();
                 ble = new BLE();
                 bleConnected = false;
@@ -631,6 +632,9 @@ namespace HaptGlove
                 // otherwise the supervisor sees the link go down and starts reconnecting to the
                 // glove they just switched off.
                 StopLinkSupervision();
+                // Let go before letting go of the link: once disconnected, the glove keeps
+                // whatever it was last told.
+                ReleaseAllNow("disconnect");
                 btHelper.Disconnect();
                 bleConnected = false;
                 if (onBluetoothDisconnected != null)
@@ -1282,6 +1286,125 @@ namespace HaptGlove
 
         }
 
+        #region Release
+        // The glove keeps whatever it was last told until it is told otherwise -- it does not
+        // release on its own when the app stops talking to it. So every way the app can stop
+        // talking (quitting, pausing, disconnecting, this component going away) releases first.
+        // What cannot be covered from here is the link dropping on its own: by then there is
+        // nothing left to send the release over.
+
+        [Tooltip("Release every channel when the app is paused -- on a headset, when it is taken off or the app " +
+                 "goes to the background. A paused app cannot release anything itself, so without this the glove " +
+                 "keeps its last pressure until the app comes back.")]
+        public bool releaseWhenPaused = true;
+
+        private static readonly Haptics.Finger[] AllChannels =
+        {
+            Haptics.Finger.Thumb, Haptics.Finger.Index, Haptics.Finger.Middle,
+            Haptics.Finger.Ring, Haptics.Finger.Pinky, Haptics.Finger.Palm
+        };
+
+        /// <summary>Switches every channel on this glove off, vibration and pressure alike.</summary>
+        public void ReleaseAllChannels()
+        {
+            ReleaseChannels(AllChannels);
+        }
+
+        /// <summary>
+        /// Switches the given channels off, vibration and pressure alike. Does nothing while the
+        /// glove is not connected.
+        /// </summary>
+        public void ReleaseChannels(params Haptics.Finger[] channels)
+        {
+            if (!bleConnected || channels == null || channels.Length == 0)
+            {
+                return;
+            }
+
+            BTSend(BuildRelease(channels));
+        }
+
+        // Two commands per channel because the glove has no single "off": a pressure release
+        // leaves a running vibration running, and a vibration stop can hand the channel back to
+        // an end pressure. Stopping the vibration first and the pressure second leaves it off
+        // either way. Twelve frames is about 230 bytes, sent as one write.
+        private byte[] BuildRelease(Haptics.Finger[] channels)
+        {
+            List<byte> frame = new List<byte>();
+            foreach (Haptics.Finger channel in channels)
+            {
+                frame.AddRange(haptics.HEXRVibration(channel, false, 1f, 0.1f));
+                frame.AddRange(haptics.HEXRPressure(channel, false, 0f, 1f));
+            }
+            return frame.ToArray();
+        }
+
+        // How long to hold the link open after an Android release that is followed by a
+        // disconnect. The write completes on Android's Bluetooth thread, and disconnecting
+        // straight after it can drop it; at a small MTU the 230 bytes go as a long write of
+        // several packets, so this is generous rather than tight.
+        private const int ReleaseBeforeDisconnectMs = 200;
+
+        // ReleaseAllChannels, written now instead of queued. Quitting, pausing and disconnecting
+        // have no later frame to flush the Quest's 100 ms batch in, and Windows' async write can
+        // lose the race with the process exiting.
+        private void ReleaseAllNow(string why, bool disconnecting = true)
+        {
+            if (!bleConnected)
+            {
+                return;
+            }
+
+            byte[] data = BuildRelease(AllChannels);
+            try
+            {
+                if (BuildPlatform == TargetPlatform.Android)
+                {
+                    // Anything still waiting in the batch would press again after the release.
+                    questBleBuffer.Clear();
+                    btHelper.WriteCharacteristic(bluetoothHelperCharacteristic, data);
+                    if (disconnecting)
+                    {
+                        Thread.Sleep(ReleaseBeforeDisconnectMs);
+                    }
+                }
+                else
+                {
+                    ble.WritePackage(deviceId, serviceUuid, characteristicUuids[0], data);
+                }
+                BleLog("released every channel (" + why + ")");
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[HexR] Could not release the " + whichHand + " glove on " + why + ": " + e.Message);
+            }
+        }
+
+        void OnApplicationPause(bool paused)
+        {
+            if (paused && releaseWhenPaused)
+            {
+                // The link stays up through a pause, so the write can finish on its own.
+                ReleaseAllNow("pause", false);
+            }
+        }
+
+        /// <summary>
+        /// True from a connect request until it succeeds or is given up on, including the waits
+        /// between retries. Calling BTConnection in that window cancels the attempt, so code that
+        /// only wants a connection should check this first.
+        /// </summary>
+        public bool IsConnecting
+        {
+            get
+            {
+                if (bleConnected) return false;
+                return connectRequested || pendingRetry != null || isScanning
+                    || (connectionThread != null && connectionThread.IsAlive);
+            }
+        }
+        #endregion
+
         public int[] GetAirPressure()
         {
             return haptics.pressureData;
@@ -1306,6 +1429,8 @@ namespace HaptGlove
         {
             try
             {
+                ReleaseAllNow("destroy");
+
                 if (BuildPlatform == TargetPlatform.Android)
                 {
                     AndroidQuit();
@@ -1320,12 +1445,16 @@ namespace HaptGlove
             {
                 Debug.Log(e.ToString());
             }
-            
+
         }
         void OnApplicationQuit()
         {
             try
             {
+                // Also what stopping Play mode in the Editor calls, which until 0.9.4 left the
+                // glove pressing whatever it was pressing when Play stopped.
+                ReleaseAllNow("quit");
+
                 if (BuildPlatform == TargetPlatform.Android)
                 {
                     AndroidQuit();

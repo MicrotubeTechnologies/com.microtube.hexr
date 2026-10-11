@@ -250,7 +250,7 @@ namespace HexR
 
             Debug.Log("[HexR] Demo scene created for " + backendLabel + ".\n"
                 + "Three things are left, because the package cannot ship them for you:\n"
-                + "  1. Add your hand-tracking rig -- Meta Building Blocks' \"Hand Tracking\" block, or an OpenXR rig with com.unity.xr.hands."
+                + "  1. Add your hand-tracking rig -- Meta Building Blocks' \"Interactions Rig\" block (the \"Hand Tracking\" block adds no hands), or an OpenXR rig with com.unity.xr.hands."
                 + (picoAvailable && !metaAvailable
                     ? " On PICO that rig is an ordinary XR Origin with com.unity.xr.hands; the PICO plugin supplies the runtime, not the rig."
                     : string.Empty) + "\n"
@@ -286,15 +286,21 @@ namespace HexR
             grabbable.Gravity = HexRGrabbable.Option.On;
             grabbable.HapticStrength = 20f;
 
-            // This is the part of the demo that matters most. On OpenXR a ProximityCheck is the
-            // only thing that ever reports a hand as near, so a scene without one is completely
-            // silent -- which reads as broken hardware. Shipping a wired example is the cheapest
-            // way to stop that being the first thing a new developer hits.
+            // A wired example of the hand-near volume. HexRGrabbable is HexR's own grab, not an
+            // XRI or Meta interactable, so no interactor ever reports a hand near it; components
+            // that gate on hand-near need a ProximityCheck around anything like it.
             GameObject proximity = new GameObject("Proximity Check");
             proximity.transform.SetParent(cube.transform, false);
             BoxCollider reach = proximity.AddComponent<BoxCollider>();
             reach.isTrigger = true;
             reach.size = Vector3.one * 2.5f;
+            // Its own kinematic body, so this 2.5x volume is not part of the cube's compound
+            // collider. Without one, the cube's Rigidbody owns it, HexRGrabbable receives its
+            // trigger messages as if they were touches, and the cube grabs from several
+            // centimetres away.
+            Rigidbody reachBody = proximity.AddComponent<Rigidbody>();
+            reachBody.isKinematic = true;
+            reachBody.useGravity = false;
 
             ProximityCheck check = proximity.AddComponent<ProximityCheck>();
             check.rightpressureTrackerMain = right;

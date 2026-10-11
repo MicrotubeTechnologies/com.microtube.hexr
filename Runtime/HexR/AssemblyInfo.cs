@@ -5,3 +5,6 @@ using System.Runtime.CompilerServices;
 // on every scene load. Rather than make those helpers public and pin six implementation details to
 // the package's supported surface forever, the editor assembly is named as a friend.
 [assembly: InternalsVisibleTo("HexR.Editor")]
+
+// The regression tests reach the same helpers, plus the Pressure Controller's hand lookups.
+[assembly: InternalsVisibleTo("HexR.Tests.Editor")]

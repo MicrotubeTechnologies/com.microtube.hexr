@@ -56,28 +56,41 @@ namespace HexR
 
             // The status texts, the indicator dots and HexRPanel are built and assigned by
             // HexRFloatingMenu when it runs, so checking the fields here would fail every scene
-            // that has not been played. Check for the menu itself instead -- that is the thing
-            // whose absence actually breaks anything, including the unguarded
-            // HexRPanel.SetActive(...) in HaptGlove_OnConnectedFailed/OnDisconnected.
+            // that has not been played. Check for the menu itself instead. Since 0.9.4 nothing
+            // breaks without it -- the manager skips labels that are not there -- but it is the
+            // only connect UI there is, so a scene without one has to connect from code.
             ok &= Check(results,
                 HexRCompat.FindAny<HexRFloatingMenu>(true) != null || controller.HexRPanel != null,
                 "HexR menu present",
-                "No HexR menu in this scene. Add one with HexR > Add HexR Menu, or use a rig prefab -- "
-                + "without it there is no connect UI, and a failed or dropped connection throws.");
+                "No HexR menu in this scene, so there is no Connect button. That is fine if your own code connects "
+                + "the gloves with HexRManager.Instance.Connect(...); otherwise add one with HexR > Add HexR Menu.");
 
             if (controller.XRFramework == HexRManager.Options.OpenXR)
             {
-                // Meta OVR has three hand-near sources and can lose this one without noticing;
-                // OpenXR has only this one. With no ProximityCheck anywhere in the scene, an
-                // OpenXR rig's IsHandNear is false forever and every haptic call that doesn't
-                // pass ByPassHandCheck is silently dropped -- which looks exactly like broken
-                // hardware, so it's worth failing setup over rather than leaving to discovery.
+                // Haptics only fire while a hand is near, and an OpenXR rig has two ways of
+                // knowing: the XRI interactors Auto Setup wires onto each Pressure Controller
+                // (grab and poke), and ProximityCheck volumes. With neither, IsHandNear is false
+                // forever and every haptic call that doesn't pass ByPassHandCheck is silently
+                // dropped -- which looks exactly like broken hardware, so it's worth failing
+                // setup over. Until 0.9.4 this asked for a ProximityCheck only, which predated
+                // the interactor wiring.
+                bool interactorsWired = false;
+                foreach (PressureTrackerMain tracker in HexRCompat.FindAll<PressureTrackerMain>(true))
+                {
+                    if (tracker.handGrabInteractor != null || tracker.pokeInteractor != null)
+                    {
+                        interactorsWired = true;
+                        break;
+                    }
+                }
+
                 ok &= Check(results,
-                    HexRCompat.FindAll<ProximityCheck>(true).Length > 0,
-                    "Proximity Check present (OpenXR)",
-                    "No ProximityCheck in this scene. On OpenXR it is the only thing that sets hand-near, so haptics "
-                    + "will never fire unless the call passes ByPassHandCheck. Add a ProximityCheck with a trigger "
-                    + "collider to each object the hand should be able to feel.");
+                    interactorsWired || HexRCompat.FindAll<ProximityCheck>(true).Length > 0,
+                    "Hand-near source present (OpenXR)",
+                    "Nothing in this scene can tell HexR a hand is near, so haptics will never fire unless the call "
+                    + "passes ByPassHandCheck. Add your XR Interaction Toolkit hand rig and run HexR > Troubleshoot > "
+                    + "Re-run Auto Setup so its grab and poke interactors are wired, or add a ProximityCheck with a "
+                    + "trigger collider to each object the hand should be able to feel.");
             }
 
             ok &= ValidateHand(controller.leftHand, HaptGloveHandler.HandType.Left, results);

@@ -227,6 +227,14 @@ namespace HexR
         /// </summary>
         public static event Action<HaptGloveHandler.HandType> ConnectAttemptEnded;
 
+        // What the menu's two buttons call. Each is a toggle: on a connected glove it disconnects,
+        // and during a retry it cancels. Code that just wants the glove connected should call
+        // Connect instead.
+        //
+        // The status labels are the floating menu's, and are null in a scene without one. Until
+        // 0.9.4 these two wrote to them unguarded, so connecting from code without the menu threw
+        // after the connect slot had been claimed -- and the slot then stayed claimed, so that
+        // hand could not connect again until the scene reloaded.
         public void ConnectRightBT()
         {
             if (!BeginConnect(HaptGloveHandler.HandType.Right))
@@ -234,7 +242,7 @@ namespace HexR
                 return;
             }
 
-            RightBtText.text = "Searching for HexR Right…";
+            SetHandText(HaptGloveHandler.HandType.Right, "Searching for HexR Right…");
             StartCoroutine(ConnectWhenPermitted(HaptGloveHandler.HandType.Right));
         }
 
@@ -245,8 +253,72 @@ namespace HexR
                 return;
             }
 
-            LeftBtText.text = "Searching for HexR Left…";
+            SetHandText(HaptGloveHandler.HandType.Left, "Searching for HexR Left…");
             StartCoroutine(ConnectWhenPermitted(HaptGloveHandler.HandType.Left));
+        }
+
+        /// <summary>
+        /// Connects that hand's glove, asking for Bluetooth permission first where the platform
+        /// needs it. Does nothing if the glove is already connected or a connect is already under
+        /// way, so -- unlike ConnectLeftBT/ConnectRightBT -- it is safe to call from code at any
+        /// time, as often as you like. Needs no floating menu.
+        /// </summary>
+        public void Connect(HaptGloveHandler.HandType hand)
+        {
+            if (IsConnected(hand) || IsConnecting(hand))
+            {
+                return;
+            }
+
+            if (hand == HaptGloveHandler.HandType.Left)
+            {
+                ConnectLeftBT();
+            }
+            else
+            {
+                ConnectRightBT();
+            }
+        }
+
+        /// <summary>
+        /// Releases every channel on that hand's glove and disconnects it. Does nothing if it is
+        /// not connected.
+        /// </summary>
+        public void Disconnect(HaptGloveHandler.HandType hand)
+        {
+            HaptGloveHandler handler = HandlerFor(hand);
+            if (handler == null || !handler.bleConnected)
+            {
+                return;
+            }
+
+            // On a connected glove the handler's connect call is the disconnect, and it releases
+            // the glove before closing the link.
+            handler.BTConnection();
+        }
+
+        /// <summary>Whether that hand's glove is connected right now.</summary>
+        public bool IsConnected(HaptGloveHandler.HandType hand)
+        {
+            HaptGloveHandler handler = HandlerFor(hand);
+            return handler != null && handler.bleConnected;
+        }
+
+        /// <summary>
+        /// Whether a connect for that hand is under way: waiting for permission, queued behind the
+        /// other hand, scanning, or waiting to retry.
+        /// </summary>
+        public bool IsConnecting(HaptGloveHandler.HandType hand)
+        {
+            bool inFlight = hand == HaptGloveHandler.HandType.Left ? leftConnectInFlight : rightConnectInFlight;
+            bool queued = hasQueuedConnect && queuedConnectHand == hand;
+            HaptGloveHandler handler = HandlerFor(hand);
+            return inFlight || queued || (handler != null && handler.IsConnecting);
+        }
+
+        private HaptGloveHandler HandlerFor(HaptGloveHandler.HandType hand)
+        {
+            return hand == HaptGloveHandler.HandType.Left ? leftHand : rightHand;
         }
 
         // Android 12 (API 31) moved BLE scanning and connecting behind runtime permissions.
@@ -302,6 +374,12 @@ namespace HexR
 
         private IEnumerator ConnectWhenPermitted(HaptGloveHandler.HandType hand)
         {
+            // One frame first, on every platform. A Connect from another component's Start can
+            // run before the glove handler's own Start, which is what creates its Bluetooth
+            // helper; on Android with the permission already granted, nothing below waited, so
+            // the handler was called with no helper and threw. A frame later every Start has run.
+            yield return null;
+
 #if UNITY_ANDROID && !UNITY_EDITOR
             foreach (string permission in RequiredBluetoothPermissions())
             {
@@ -335,8 +413,6 @@ namespace HexR
                     yield break;
                 }
             }
-#else
-            yield return null;
 #endif
 
             // On Unity's thread. BTConnection starts coroutines and reads Time, and only the
@@ -344,10 +420,19 @@ namespace HexR
             // does that itself (see HaptGloveHandler.PluginConnect / PluginScan). Marshalling
             // the whole call, as this used to, made the first StartCoroutine throw on the UI
             // thread before the scan was ever started.
-            HaptGloveHandler handler = hand == HaptGloveHandler.HandType.Left ? leftHand : rightHand;
+            HaptGloveHandler handler = HandlerFor(hand);
             if (handler != null)
             {
                 handler.BTConnection();
+            }
+            else
+            {
+                // Nothing will ever report back on a hand with no handler, so free the slot now
+                // rather than leave it claimed for the rest of the session.
+                Debug.LogWarning("[HexR] No " + hand + " glove handler is assigned on " + name
+                    + ", so that glove cannot connect. Run HexR > Troubleshoot > Validate Scene Setup.", this);
+                EndConnect(hand);
+                ConnectAttemptEnded?.Invoke(hand);
             }
         }
 
@@ -579,16 +664,18 @@ namespace HexR
         }
         private void BatteryState(String LeftOrRight)
         {
+            // Through SetHandText, which skips a missing label. Writing them directly threw every
+            // eight seconds for as long as a glove stayed connected in a scene without the menu.
             if(LeftOrRight == "Right")
             {
                 float BatteryLevel = rightHand.GetBatteryLevel();
                 if(BatteryLevel == 0)
                 {
-                    RightBtText.text = "Right ready";
+                    SetHandText(HaptGloveHandler.HandType.Right, "Right ready");
                 }
                 else
                 {
-                    RightBtText.text = "Right ready · " + Math.Round(BatteryLevel * 100) + "%";
+                    SetHandText(HaptGloveHandler.HandType.Right, "Right ready · " + Math.Round(BatteryLevel * 100) + "%");
                 }
             }
             else if(LeftOrRight == "Left")
@@ -596,11 +683,11 @@ namespace HexR
                 float BatteryLevel = leftHand.GetBatteryLevel();
                 if (BatteryLevel == 0)
                 {
-                    LeftBtText.text = "Left ready";
+                    SetHandText(HaptGloveHandler.HandType.Left, "Left ready");
                 }
                 else
                 {
-                    LeftBtText.text = "Left ready · " + Math.Round(BatteryLevel * 100) + "%";
+                    SetHandText(HaptGloveHandler.HandType.Left, "Left ready · " + Math.Round(BatteryLevel * 100) + "%");
                 }
 
             }

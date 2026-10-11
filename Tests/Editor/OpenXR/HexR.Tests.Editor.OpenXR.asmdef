@@ -1,0 +1,33 @@
+{
+    "name": "HexR.Tests.Editor.OpenXR",
+    "rootNamespace": "HexR.Tests",
+    "references": [
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "HexR.Runtime",
+        "HexR.Runtime.OpenXR",
+        "Unity.XR.Interaction.Toolkit"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS",
+        "HEXR_XRI"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.xr.interaction.toolkit",
+            "expression": "",
+            "define": "HEXR_XRI"
+        }
+    ],
+    "noEngineReferences": false
+}

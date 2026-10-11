@@ -115,7 +115,92 @@ namespace HexR
         private void OnDisable()
         {
             StopAllCoroutines();
+
+            // Stopping the coroutines also stopped whatever was due to switch the effect off --
+            // the rain drop's release, the custom haptic's release, the heartbeat's out-beat --
+            // so before 0.9.4 a zone disabled mid-effect left those channels pressing or buzzing
+            // until something else happened to release them.
+            ReleaseWhatThisZoneApplied();
+            ResetFingerBool();
         }
+
+        #region Release on disable
+
+        // The channels this zone has switched on and not yet switched off, per glove, in
+        // Haptics.Finger order. Only these are released on disable, so a zone going away does not
+        // cut off another component's effect on the same hand.
+        private readonly bool[] appliedRight = new bool[6], appliedLeft = new bool[6];
+
+        private bool[] AppliedFor(HaptGloveHandler gloveHandler)
+        {
+            if (gloveHandler == null) return null;
+            if (gloveHandler == RightHaptGloveHandler) return appliedRight;
+            if (gloveHandler == LeftHaptGloveHandler) return appliedLeft;
+            return null;
+        }
+
+        private void NoteApplied(HaptGloveHandler gloveHandler, bool[] channels)
+        {
+            bool[] applied = AppliedFor(gloveHandler);
+            if (applied == null) return;
+            for (int i = 0; i < applied.Length && i < channels.Length; i++)
+            {
+                applied[i] |= channels[i];
+            }
+        }
+
+        private void NoteApplied(HaptGloveHandler gloveHandler, Haptics.Finger channel, bool on)
+        {
+            bool[] applied = AppliedFor(gloveHandler);
+            if (applied != null) applied[(int)channel] = on;
+        }
+
+        private void NoteReleased(HaptGloveHandler gloveHandler)
+        {
+            bool[] applied = AppliedFor(gloveHandler);
+            if (applied != null) System.Array.Clear(applied, 0, applied.Length);
+        }
+
+        private void ReleaseWhatThisZoneApplied()
+        {
+            Release(RightHaptGloveHandler, appliedRight);
+            Release(LeftHaptGloveHandler, appliedLeft);
+        }
+
+        private static void Release(HaptGloveHandler gloveHandler, bool[] applied)
+        {
+            List<Haptics.Finger> channels = new List<Haptics.Finger>();
+            for (int i = 0; i < applied.Length; i++)
+            {
+                if (applied[i]) channels.Add((Haptics.Finger)i);
+                applied[i] = false;
+            }
+
+            if (gloveHandler != null && channels.Count > 0)
+            {
+                gloveHandler.ReleaseChannels(channels.ToArray());
+            }
+        }
+
+        private static Haptics.Finger ChannelOf(HapticFingerTrigger trigger)
+        {
+            switch (trigger.fingertype)
+            {
+                case HapticFingerTrigger.FingerType.Thumb: return Haptics.Finger.Thumb;
+                case HapticFingerTrigger.FingerType.Index: return Haptics.Finger.Index;
+                case HapticFingerTrigger.FingerType.Middle: return Haptics.Finger.Middle;
+                case HapticFingerTrigger.FingerType.Ring: return Haptics.Finger.Ring;
+                case HapticFingerTrigger.FingerType.Little: return Haptics.Finger.Pinky;
+                default: return Haptics.Finger.Palm;
+            }
+        }
+
+        private HaptGloveHandler HandlerFor(HapticFingerTrigger trigger)
+        {
+            return trigger.handType == HapticFingerTrigger.HandType.Right ? RightHaptGloveHandler : LeftHaptGloveHandler;
+        }
+
+        #endregion
         private void Update()
         {
             if (timer > 0)
@@ -245,6 +330,8 @@ namespace HexR
 
         private void TriggerHapticForVibrations(HaptGloveHandler gloveHandler)
         {
+            if (gloveHandler == null) { ResetFingerBool(); return; }
+
             if (Thumb_Bool || Index_Bool || Middle_Bool || Ring_Bool || Pinky_Bool || Palm_Bool)
             {
                 Haptics.Finger[] AllFingers = new Haptics.Finger[] { Haptics.Finger.Thumb, Haptics.Finger.Index, Haptics.Finger.Middle, Haptics.Finger.Ring, Haptics.Finger.Pinky, Haptics.Finger.Palm };
@@ -254,6 +341,7 @@ namespace HexR
                 bool[] FingerToTrigger = new bool[] { Thumb_Bool, Index_Bool, Middle_Bool, Ring_Bool, Pinky_Bool, Palm_Bool };
                 byte[] btData = gloveHandler.haptics.HEXRVibration(AllFingers, FingerToTrigger, TheFrequency, ThePressure);
                 gloveHandler.BTSend(btData);
+                NoteApplied(gloveHandler, FingerToTrigger);
                 ResetFingerBool();
             }
             else
@@ -265,6 +353,7 @@ namespace HexR
                 bool[] FingerToTrigger = new bool[] { false, false, false, false, false, false };
                 byte[] btData = gloveHandler.haptics.HEXRVibration(AllFingers, FingerToTrigger, TheFrequency, ThePressure);
                 gloveHandler.BTSend(btData);
+                NoteReleased(gloveHandler);
                 ResetFingerBool();
             }
         }
@@ -282,7 +371,10 @@ namespace HexR
                 {
                     hapticFingerTrigger2 = hapticFingerTrigger;
                     RemoveHap = false;
-                    hapticFingerTrigger.TriggerFixPressure(HapticPressure);
+                    // HapticPressure is on the 10-60 scale; TriggerFixPressure takes 0.1-1. Passed
+                    // straight in, as it was until 0.9.4, every value came out as full pressure.
+                    hapticFingerTrigger.TriggerFixPressure(PressureTrackerMain.StrengthToIntensity(HapticPressure));
+                    NoteApplied(HandlerFor(hapticFingerTrigger), ChannelOf(hapticFingerTrigger), true);
                     timer = 0.1f;
 
                 }
@@ -302,9 +394,10 @@ namespace HexR
             // Wait for the specified delay time
             yield return new WaitForSeconds(0.1f);
 
-            if (RemoveHap == true)
+            if (RemoveHap == true && hapticFingerTrigger1 != null)
             {
-                hapticFingerTrigger1?.RemoveHaptics();
+                hapticFingerTrigger1.RemoveHaptics();
+                NoteApplied(HandlerFor(hapticFingerTrigger1), ChannelOf(hapticFingerTrigger1), false);
             }
             else
             {
@@ -350,6 +443,8 @@ namespace HexR
         }
         public void FountainEffect(HaptGloveHandler gloveHandler)
         {
+            if (gloveHandler == null) { ResetFingerBool(); return; }
+
             if (Thumb_Bool || Index_Bool || Middle_Bool || Ring_Bool || Pinky_Bool || Palm_Bool)
             {
                 Haptics.Finger[] AllFingers = new Haptics.Finger[] { Haptics.Finger.Thumb, Haptics.Finger.Index, Haptics.Finger.Middle, Haptics.Finger.Ring, Haptics.Finger.Pinky, Haptics.Finger.Palm };
@@ -359,6 +454,7 @@ namespace HexR
                 bool[] FingerToTrigger = new bool[] { Thumb_Bool, Index_Bool, Middle_Bool, Ring_Bool, Pinky_Bool, Palm_Bool };
                 byte[] btData = gloveHandler.haptics.HEXRVibration(AllFingers, FingerToTrigger, TheFrequency, ThePressure);
                 gloveHandler.BTSend(btData);
+                NoteApplied(gloveHandler, FingerToTrigger);
                 ResetFingerBool();
             }
             else
@@ -370,6 +466,7 @@ namespace HexR
                 bool[] FingerToTrigger = new bool[] { false, false, false, false, false, false };
                 byte[] btData = gloveHandler.haptics.HEXRVibration(AllFingers, FingerToTrigger, TheFrequency, ThePressure);
                 gloveHandler.BTSend(btData);
+                NoteReleased(gloveHandler);
                 ResetFingerBool();
             }
         }
@@ -415,6 +512,7 @@ namespace HexR
             if (RemoveIt == true)
             {
                 PressureTracker?.RemoveAllHaptics();
+                NoteReleased(PressureTracker == RPressureTracker ? RightHaptGloveHandler : LeftHaptGloveHandler);
                 RemoveIt = false;
             }
             else
@@ -425,6 +523,8 @@ namespace HexR
         }
         public void RaindropEffect(int Pattern, HaptGloveHandler gloveHandler)
         {
+            if (gloveHandler == null) return;
+
             Haptics.Finger[] AllFingers = new Haptics.Finger[] { Haptics.Finger.Thumb, Haptics.Finger.Index, Haptics.Finger.Middle, Haptics.Finger.Ring, Haptics.Finger.Pinky, Haptics.Finger.Palm };
 
             float[] ThePressure = new float[] { HapticStrenngthValue, HapticStrenngthValue, HapticStrenngthValue, HapticStrenngthValue, HapticStrenngthValue, HapticStrenngthValue };
@@ -439,6 +539,7 @@ namespace HexR
 
                 byte[] btData = gloveHandler.haptics.HEXRPressure(AllFingers, TheBool, ThePressure, TheSpeed);
                 gloveHandler.BTSend(btData);
+                NoteApplied(gloveHandler, TheBool);
 
             }
             else if (Pattern == 2)
@@ -448,6 +549,7 @@ namespace HexR
 
                 byte[] btData = gloveHandler.haptics.HEXRPressure(AllFingers, TheBool, ThePressure, TheSpeed);
                 gloveHandler.BTSend(btData);
+                NoteApplied(gloveHandler, TheBool);
             }
             else if (Pattern == 3)
             {
@@ -455,6 +557,7 @@ namespace HexR
                 bool[] TheBool = new bool[] { true, false, true, false, false, true };
                 byte[] btData = gloveHandler.haptics.HEXRPressure(AllFingers, TheBool, ThePressure, TheSpeed);
                 gloveHandler.BTSend(btData);
+                NoteApplied(gloveHandler, TheBool);
             }
             else if (Pattern == 4)
             {
@@ -463,6 +566,7 @@ namespace HexR
 
                 byte[] btData = gloveHandler.haptics.HEXRPressure(AllFingers, TheBool, ThePressure, TheSpeed);
                 gloveHandler.BTSend(btData);
+                NoteApplied(gloveHandler, TheBool);
             }
             else if (Pattern == 5)
             {
@@ -471,6 +575,7 @@ namespace HexR
 
                 byte[] btData = gloveHandler.haptics.HEXRPressure(AllFingers, TheBool, ThePressure, TheSpeed);
                 gloveHandler.BTSend(btData);
+                NoteApplied(gloveHandler, TheBool);
             }
             else if (Pattern == 6)
             {
@@ -479,6 +584,7 @@ namespace HexR
 
                 byte[] btData = gloveHandler.haptics.HEXRPressure(AllFingers, TheBool, ThePressure, TheSpeed);
                 gloveHandler.BTSend(btData);
+                NoteApplied(gloveHandler, TheBool);
             }
             else if (Pattern == 7)
             {
@@ -487,6 +593,7 @@ namespace HexR
 
                 byte[] btData = gloveHandler.haptics.HEXRPressure(AllFingers, TheBool, ThePressure, TheSpeed);
                 gloveHandler.BTSend(btData);
+                NoteApplied(gloveHandler, TheBool);
             }
             else if (Pattern == 8)
             {
@@ -495,6 +602,7 @@ namespace HexR
 
                 byte[] btData = gloveHandler.haptics.HEXRPressure(AllFingers, TheBool, ThePressure, TheSpeed);
                 gloveHandler.BTSend(btData);
+                NoteApplied(gloveHandler, TheBool);
             }
         }
 
@@ -521,8 +629,10 @@ namespace HexR
             PressureIn = false;
             if (Thumb_Bool || Index_Bool || Middle_Bool || Ring_Bool || Pinky_Bool || Palm_Bool || HapticsIsActivated)
             {
-                RPressureTracker.RemoveAllHaptics();
-                LPressureTracker.RemoveAllHaptics();
+                RPressureTracker?.RemoveAllHaptics();
+                LPressureTracker?.RemoveAllHaptics();
+                NoteReleased(RightHaptGloveHandler);
+                NoteReleased(LeftHaptGloveHandler);
                 Thumb_Bool = Index_Bool = Middle_Bool = Ring_Bool = Pinky_Bool = Palm_Bool = HapticsIsActivated = false;
             }
             if (heartbeat == HeartBeat.Regular)
@@ -577,6 +687,7 @@ namespace HexR
 
         private void TriggerHapticForHeartBeat(HaptGloveHandler gloveHandler)
         {
+            if (gloveHandler == null) return;
 
             if (Thumb_Bool || Index_Bool || Middle_Bool || Ring_Bool || Pinky_Bool || Palm_Bool)
             {
@@ -587,6 +698,7 @@ namespace HexR
                 bool[] FingerToTrigger = new bool[] { Thumb_Bool, Index_Bool, Middle_Bool, Ring_Bool, Pinky_Bool, Palm_Bool };
                 byte[] btData = gloveHandler.haptics.HEXRPressure(AllFingers, FingerToTrigger, ThePressure, TheSpeed);
                 gloveHandler.BTSend(btData);
+                NoteApplied(gloveHandler, FingerToTrigger);
 
                 HapticsIsActivated = true;
             }

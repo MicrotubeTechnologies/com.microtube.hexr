@@ -81,6 +81,13 @@ namespace HexR.OpenXR
                 start = tracking != null ? tracking.handRoot : null;
             }
 
+            // The Pressure Controllers are not under the hands in either rig prefab, so the
+            // lookup above finds nothing for them. Go through the rig to this side's hand instead.
+            if (start == null && tracker != null)
+            {
+                start = tracker.TrackedHandRoot;
+            }
+
             return ClimbToInteractors(start);
         }
 
@@ -124,7 +131,15 @@ namespace HexR.OpenXR
 
             if (tracker.handGrabInteractor == null)
             {
-                tracker.handGrabInteractor = handRoot.GetComponentInChildren<XRDirectInteractor>(true);
+                // XRI 3's hand rig (XR Origin Hands) grabs with a Near-Far Interactor and has no
+                // Direct Interactor at all. Until 0.9.4 only the Direct one was looked for, so on
+                // that rig grab gating stayed off and grabs went unfelt.
+                XRBaseInteractor grab = handRoot.GetComponentInChildren<XRDirectInteractor>(true);
+                if (grab == null)
+                {
+                    grab = handRoot.GetComponentInChildren<NearFarInteractor>(true);
+                }
+                tracker.handGrabInteractor = grab;
             }
 
             if (tracker.pokeInteractor == null)
@@ -134,9 +149,9 @@ namespace HexR.OpenXR
 
             if (tracker.handGrabInteractor == null || tracker.pokeInteractor == null)
             {
-                Debug.LogWarning("[HexR] " + (label ?? name) + ": couldn't find an XRDirectInteractor and " +
-                                 "XRPokeInteractor under \"" + handRoot.name + "\". Grab or poke gating " +
-                                 "will stay off for this hand.");
+                Debug.LogWarning("[HexR] " + (label ?? name) + ": couldn't find a grab interactor (XR Direct or " +
+                                 "Near-Far) and an XR Poke Interactor under \"" + handRoot.name + "\". Grab or " +
+                                 "poke gating will stay off for this hand.");
                 return false;
             }
 
@@ -152,12 +167,39 @@ namespace HexR.OpenXR
 
             Resolve();
 
-            bool grabbing = grabInteractor != null &&
-                            (grabInteractor.hasSelection || (grabHoverCountsAsNear && grabInteractor.hasHover));
+            bool grabbing = IsGrabbingNear();
             bool poking = pokeInteractor != null && pokeInteractor.hasHover;
 
             tracker.HandGrabbingCheck(grabbing);
             tracker.PokeHoveringCheck(poking);
+        }
+
+        /// <summary>
+        /// Whether the grab interactor has something in the hand, or within reach of it.
+        ///
+        /// A Near-Far Interactor also selects and hovers from across the room along its ray, and
+        /// the glove should not press for an object the hand is nowhere near. So for one of those
+        /// only a near selection counts, and hover counts only when far casting is switched off
+        /// (then everything it hovers is in reach). A Direct Interactor only ever reaches what is
+        /// at the hand, so all of its state counts, as before.
+        /// </summary>
+        private bool IsGrabbingNear()
+        {
+            if (grabInteractor == null)
+            {
+                return false;
+            }
+
+            NearFarInteractor nearFar = grabInteractor as NearFarInteractor;
+            if (nearFar != null)
+            {
+                bool nearSelect = nearFar.hasSelection
+                                  && nearFar.selectionRegion.Value == NearFarInteractor.Region.Near;
+                bool nearHover = grabHoverCountsAsNear && !nearFar.enableFarCasting && nearFar.hasHover;
+                return nearSelect || nearHover;
+            }
+
+            return grabInteractor.hasSelection || (grabHoverCountsAsNear && grabInteractor.hasHover);
         }
 
         private void Resolve()

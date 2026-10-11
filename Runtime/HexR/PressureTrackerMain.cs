@@ -173,10 +173,77 @@ namespace HexR
         // Once, not once per frame, which is what the Update below was doing.
         private bool warnedNoGlove;
 
+        #region Strength scale and lookups
+
+        /// <summary>
+        /// Converts the 10-60 strength scale the components show in the Inspector into the 0.1-1
+        /// intensity every method on this class takes.
+        ///
+        /// HexRInteractableHaptics.strength, HexRGrabbable.HapticStrength,
+        /// SpecialHaptics.HapticPressure and HexRPhysicalButton.pressPressure are all set on that
+        /// 10-60 scale, and until 0.9.4 each of them passed the number straight in here. Every
+        /// method below clamps to 0.1-1 first, so 30 and 60 both arrived as 1 and every object
+        /// pressed at full strength. The glove maps 0.1-1 onto 15-50 kPa, so 10 ("barely there")
+        /// lands on the glove's lowest pressure and 60 ("firm") on its highest.
+        /// </summary>
+        public static float StrengthToIntensity(float strength)
+        {
+            return Mathf.Clamp(0.1f + 0.9f * (strength - 10f) / 50f, 0.1f, 1f);
+        }
+
+        /// <summary>
+        /// The glove handler this Pressure Controller sends to, looked up through HexRManager if
+        /// Start has not got there yet. Null when there is no rig or no handler for this hand.
+        /// </summary>
+        internal HaptGloveHandler ResolveGloveHandler()
+        {
+            if (gloveHandler == null && HexRManager.Instance != null)
+            {
+                gloveHandler = handType == HandType.Left ? HexRManager.Instance.leftHand : HexRManager.Instance.rightHand;
+            }
+
+            return gloveHandler;
+        }
+
+        /// <summary>
+        /// This hand's FingerUseTracking. It lives on the hand (beside the glove handler and the
+        /// HexRTrackedHand), not on the Pressure Controller, which is where callers used to look.
+        /// </summary>
+        internal FingerUseTracking ResolveFingerUse()
+        {
+            FingerUseTracking use = GetComponent<FingerUseTracking>();
+            if (use != null)
+            {
+                return use;
+            }
+
+            HaptGloveHandler handler = ResolveGloveHandler();
+            return handler != null ? handler.GetComponent<FingerUseTracking>() : null;
+        }
+
+        /// <summary>
+        /// The tracked hand this side of the rig follows (the HexRTrackedHand.handRoot on the
+        /// rig's hand for this side), or null if the rig has not found one yet. The backends'
+        /// hand-near sources start their interactor search here: a Pressure Controller is not
+        /// under its hand in either rig prefab, so searching up from it finds nothing.
+        /// </summary>
+        public Transform TrackedHandRoot
+        {
+            get
+            {
+                HaptGloveHandler handler = ResolveGloveHandler();
+                HexRTrackedHand tracking = handler != null ? handler.GetComponent<HexRTrackedHand>() : null;
+                return tracking != null ? tracking.handRoot : null;
+            }
+        }
+
+        #endregion
+
         #region Basic Haptics Functions For Single Haptics Trigger
 
         // Single Finger Haptics increase.
-        // Set a TargetPressure of 0 - 1
+        // Set a TargetPressure of 0.1 - 1. A value on the components' 10-60 strength scale has to
+        // go through StrengthToIntensity first.
         public void SingleThumbHaptic(float TargetPressure)
         {
             if (!GloveReady()) { return; }

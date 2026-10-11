@@ -55,8 +55,9 @@ namespace HexR
         public bool palm = true;
 
         [Header("How hard")]
-        [Tooltip("Pressure applied to each selected finger. The glove's usable range is 10 (barely " +
-                 "there) to 60 (firm). 30 suits a small prop, 40 something heavier like a torch.")]
+        [Tooltip("Pressure applied to each selected finger, from 10 (barely there, the glove's " +
+                 "lowest pressure) to 60 (firm, its highest). 30 suits a small prop, 40 something " +
+                 "heavier like a torch. Below 5 nothing is applied.")]
         [Range(0f, 60f)]
         public float strength = 30f;
 
@@ -424,7 +425,9 @@ namespace HexR
             if (!ReferenceEquals(active[side], tracker))
             {
                 active[side] = tracker;
-                fingers[side] = tracker.GetComponent<FingerUseTracking>();
+                // On the hand, not the Pressure Controller. Looking on the Pressure Controller,
+                // as this did until 0.9.4, always came back empty, so Follow Grip never followed.
+                fingers[side] = tracker.ResolveFingerUse();
                 applied[side] = -1f;
             }
 
@@ -475,6 +478,11 @@ namespace HexR
             // scene-local, so across a scene load the component can survive while the thing it
             // reads does not.
             FingerUseTracking use = fingers[side];
+            if (use == null && active[side] != null)
+            {
+                use = fingers[side] = active[side].ResolveFingerUse();
+            }
+
             if (use == null)
             {
                 return strength;
@@ -531,12 +539,14 @@ namespace HexR
                 return;
             }
 
-            if (thumb) tracker.SingleThumbHaptic(stepped);
-            if (index) tracker.SingleIndexHaptic(stepped);
-            if (middle) tracker.SingleMiddleHaptic(stepped);
-            if (ring) tracker.SingleRingHaptic(stepped);
-            if (pinky) tracker.SinglePinkyHaptic(stepped);
-            if (palm) tracker.SinglePalmHaptic(stepped);
+            // The Single*Haptic methods take 0.1-1, not this component's 10-60.
+            float intensity = PressureTrackerMain.StrengthToIntensity(stepped);
+            if (thumb) tracker.SingleThumbHaptic(intensity);
+            if (index) tracker.SingleIndexHaptic(intensity);
+            if (middle) tracker.SingleMiddleHaptic(intensity);
+            if (ring) tracker.SingleRingHaptic(intensity);
+            if (pinky) tracker.SinglePinkyHaptic(intensity);
+            if (palm) tracker.SinglePalmHaptic(intensity);
         }
 
         private void RemoveAll(int side)

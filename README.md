@@ -34,7 +34,7 @@ Or add it to `Packages/manifest.json` directly:
 ```
 
 Pinning is optional: `main` is kept releasable, so the unpinned URL above always resolves
-the latest release. Append a tag (`#v0.5.1`) when a build has to stay reproducible.
+the latest release. Append a tag (`#v0.9.4`) when a build has to stay reproducible.
 
 Either way, UPM caches a git dependency by the ref it resolved, so an unpinned URL does not
 re-check on its own. To pull a newer `main`, use **Window → Package Manager →
@@ -270,8 +270,8 @@ Bluetooth write-buffering strategy inside the closed-source `HaptGlove.dll` and 
 ever been exercised on Quest. *If a PICO build pairs with the glove but no haptics arrive,
 turn it off first.*
 
-**The `ProximityCheck` requirement applies in full** — PICO sits in the OpenXR column of the
-table below, so a scene without one never fires haptics at all.
+**Hand-near gating works as on any other OpenXR rig** — PICO sits in the OpenXR column of
+the table below.
 
 ## Hand-near gating differs by backend
 
@@ -280,14 +280,33 @@ Haptics only fire when `PressureTrackerMain.IsHandNear()` is true (unless the ca
 
 | Flag | Set by | Meta OVR | OpenXR (incl. PICO) |
 | --- | --- | --- | --- |
-| `HandGrabbing` | `MetaOVRHandNearSource` ← `HandGrabInteractor.HasInteractable` | ✅ | ❌ |
-| `PokeHovering` | `MetaOVRHandNearSource` ← `PokeInteractor.HasInteractable` | ✅ | ❌ |
-| `CollisionNearHand` | `ProximityCheck` trigger volume | ✅ | ✅ (only source) |
+| `HandGrabbing` | `MetaOVRHandNearSource` ← `HandGrabInteractor.HasInteractable`; `OpenXRHandNearSource` ← XR Direct Interactor, or a Near-Far Interactor's near grab | ✅ | ✅ |
+| `PokeHovering` | `MetaOVRHandNearSource` ← `PokeInteractor.HasInteractable`; `OpenXRHandNearSource` ← XR Poke Interactor hover | ✅ | ✅ |
+| `CollisionNearHand` | `ProximityCheck` trigger volume | ✅ | ✅ |
 
-So on OpenXR, **a scene with no `ProximityCheck` never fires haptics at all** — which looks
-exactly like broken hardware. `ValidateSetup` fails on this for OpenXR rigs specifically.
-Put a `ProximityCheck` with a trigger collider on each object the hand should be able to
-feel, and hit its "Auto Set Up" to wire both Pressure Controllers.
+Auto Setup attaches the matching hand-near source to each Pressure Controller and finds the
+interactors for it. On a Near-Far Interactor only a *near* grab counts — a far grab along the
+ray does not press the glove — and its hover counts only with far casting switched off. A scene
+with none of these sources never fires haptics at all, which looks exactly like broken
+hardware, so **HexR > Troubleshoot > Validate Scene Setup** fails on it for OpenXR rigs. For
+a haptic zone the hand reaches into, which no interactor knows about, put a `ProximityCheck`
+with a trigger collider on it and hit its "Auto Set Up" to wire both Pressure Controllers.
+
+## Connecting and releasing from code
+
+`HexRManager.Instance.Connect(HaptGloveHandler.HandType.Left)` connects a glove, asking for
+Bluetooth permission first where the platform needs it, and does nothing if that glove is
+already connected or connecting — so it is safe to call from `Start` or a button of your own,
+with or without the floating menu. `Disconnect`, `IsConnected` and `IsConnecting` take the same
+argument. `ConnectLeftBT`/`ConnectRightBT` are what the menu's buttons call, and are toggles:
+on a connected glove they disconnect.
+
+The glove keeps its last command until it is told otherwise, so the package releases every
+channel when the app quits (stopping Play mode in the Editor included), when it pauses
+(`HaptGloveHandler.releaseWhenPaused`, on by default), and before any disconnect it makes.
+`HaptGloveHandler.ReleaseAllChannels()` does the same on demand. What no code on the headset
+can cover is the Bluetooth link dropping on its own; then the glove holds its last pressure
+until the arm module is switched off.
 
 ## Getting started in a new project
 
@@ -296,14 +315,15 @@ feel, and hit its "Auto Set Up" to wire both Pressure Controllers.
 2. Open **HexR > HexR Tools > Project Setup**, pick the backend this project targets, and
    install whatever it reports missing. Nothing pulls these in automatically any more —
    that's the price of the package not hard-depending on either.
-3. Set up a hand-tracking camera rig in the target scene (Meta Building Blocks' "Hand
-   Tracking" block, or an OpenXR rig with `com.unity.xr.hands`). This package assumes that
-   exists, it doesn't create it.
+3. Set up a hand-tracking camera rig in the target scene (Meta Building Blocks' "Interactions
+   Rig" block — the "Hand Tracking" block adds no hands — or an OpenXR rig with
+   `com.unity.xr.hands`). This package assumes that exists, it doesn't create it.
 4. Run **HexR > Create HexR Rig > Meta OVR** (or **Open XR**). The rig prefab ships with
    the package, so there is nothing to source or copy in first.
-5. Run **HexR > Auto Setup Scene** (or the Inspector's "Auto Set Up HexR" button), then
-   **HexR > Validate Scene Setup** to confirm hand roots, the Pressure Controllers, the
-   fingertip/palm colliders and (on OpenXR) a `ProximityCheck` are all wired correctly.
+5. Run **HexR > Troubleshoot > Re-run Auto Setup** (or the Inspector's "Auto Set Up HexR"
+   button), then **HexR > Troubleshoot > Validate Scene Setup** to confirm hand roots, the
+   Pressure Controllers, the fingertip/palm colliders and (on OpenXR) a hand-near source are
+   all wired correctly.
 6. Optional: **Window > Package Manager > HexR > Samples > Tutorial Content > Import** for
    the tutorial props (torch, squeezable heart, lightbulb, ball, connect/grab audio). The
    sample is props only — there is no scene in it, because a saved scene would have to

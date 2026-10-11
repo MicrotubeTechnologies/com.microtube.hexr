@@ -32,7 +32,7 @@ namespace HexR
         [Tooltip("Assign the target gameobject, this is to allow the grab collider to be seperated from other colliders in the gameobject.)")]
         public GameObject TheObject; //Optional, if you want to seperate the grab zone from the action object, which will allow you to not include nested collider in child
 
-        [Tooltip("60 = strongest haptics, 0 = no haptics")]
+        [Tooltip("How firmly each touching finger is pressed while held: 10 is barely there, 60 is firm, 0 is no haptics. The same scale as Interactable Haptics.")]
         [Range(0f, 60f)]
         public float HapticStrength = 10f;
 
@@ -42,7 +42,12 @@ namespace HexR
 
 
         private GameObject RHandParent, LHandParent;
-        private GameObject OriginalParent;
+        // Null for an object at the root of the scene, and SetParent(null) puts it back there.
+        private Transform OriginalParent;
+        // The Pressure Controller of the hand holding the object, so disabling the object
+        // mid-grab can release that glove.
+        private PressureTrackerMain grabbingTracker;
+        private Coroutine resetGrab;
         #region Bool Fields
         bool RThumb, RIndex, RLittle, RMiddle, RRing, RPalm; // if finger is touching
         bool LThumb, LIndex, LLittle, LMiddle, LRing, LPalm;
@@ -59,21 +64,9 @@ namespace HexR
         // Start is called before the first frame update
         void Start()
         {
-            GameObject RightHand = HexRManager.Instance.rightHand.gameObject;
-            GameObject LeftHand = HexRManager.Instance.leftHand.gameObject;
-
             // Create new empty objects with unique names for right and left hand parents
             RHandParent = new GameObject("RightHandParent");
             LHandParent = new GameObject("LeftHandParent");
-
-            if (RightHand != null) { RfingerUseTracking = RightHand.GetComponent<FingerUseTracking>(); }
-            else { Debug.Log("Right hand is not found"); }
-            if (RightHand != null) { RightPressureTracker = GameObject.Find("Right Pressure Controller").GetComponent<PressureTrackerMain>(); }
-            else { Debug.Log("Right pressuretracker is not found"); }
-            if (LeftHand != null) { LfingeruseTracking = LeftHand.GetComponent<FingerUseTracking>(); }
-            else { Debug.Log("Left hand is not found"); }
-            if (LeftHand != null) { LeftPressureTracker = GameObject.Find("Left Pressure Controller").GetComponent<PressureTrackerMain>(); }
-            else { Debug.Log("Left pressuretracker is not found"); }
 
             objectRigidbody = gameObject.GetComponent<Rigidbody>();
             if (TheObject == null)
@@ -81,9 +74,75 @@ namespace HexR
                 TheObject = gameObject;
             }
 
-            OriginalParent = TheObject.transform.parent.gameObject;
+            // Was TheObject.transform.parent.gameObject, which threw for any object at the root
+            // of the scene -- the cube Create Demo Scene adds among them.
+            OriginalParent = TheObject.transform.parent;
             SetUpBool();
 
+            ResolveHands();
+        }
+
+        // Through the rig, and allowed to come up empty: a scene with no rig, or a rig missing a
+        // hand, leaves that hand unfelt instead of throwing out of Start.
+        private void ResolveHands()
+        {
+            HexRManager manager = HexRManager.Instance;
+            if (manager == null)
+            {
+                Debug.LogWarning("[HexR] " + name + ": no HexRManager in the scene, so this object can be grabbed but not felt.", this);
+                return;
+            }
+
+            if (manager.rightHand != null) { RfingerUseTracking = manager.rightHand.GetComponent<FingerUseTracking>(); }
+            else { Debug.Log("Right hand is not found"); }
+            if (manager.leftHand != null) { LfingeruseTracking = manager.leftHand.GetComponent<FingerUseTracking>(); }
+            else { Debug.Log("Left hand is not found"); }
+
+            RightPressureTracker = FindPressureTracker(PressureTrackerMain.HandType.Right);
+            LeftPressureTracker = FindPressureTracker(PressureTrackerMain.HandType.Left);
+        }
+
+        // By name first, as before, then by the side Auto Setup records on each one.
+        private static PressureTrackerMain FindPressureTracker(PressureTrackerMain.HandType side)
+        {
+            string label = side == PressureTrackerMain.HandType.Left ? "Left" : "Right";
+            GameObject named = GameObject.Find(label + " Pressure Controller");
+            PressureTrackerMain tracker = named != null ? named.GetComponent<PressureTrackerMain>() : null;
+            if (tracker != null)
+            {
+                return tracker;
+            }
+
+            foreach (PressureTrackerMain candidate in HexRCompat.FindAll<PressureTrackerMain>(true))
+            {
+                if (candidate.handType == side)
+                {
+                    return candidate;
+                }
+            }
+
+            Debug.Log(label + " pressuretracker is not found");
+            return null;
+        }
+
+        private void OnDisable()
+        {
+            // Disabled or destroyed mid-grab: let go of the glove too, not just the object.
+            if (!InvokeEventReady && grabbingTracker != null)
+            {
+                grabbingTracker.HandGrabbingCheck(false);
+                RemoveHaptics(grabbingTracker);
+                InvokeEventReady = true;
+            }
+
+            // Coroutines outlive a disabled component (only deactivating the GameObject stops
+            // them), so stop this one rather than let it release a grab that is already over.
+            if (resetGrab != null)
+            {
+                StopCoroutine(resetGrab);
+                resetGrab = null;
+            }
+            grabbingTracker = null;
         }
 
         // Update is called once per frame
@@ -122,7 +181,7 @@ namespace HexR
                 }
                 if (!RThumb && !LThumb)
                 {
-                    TheObject.transform.SetParent(OriginalParent.transform);
+                    TheObject.transform.SetParent(OriginalParent);
                 }
             }
             else if (TypeOfGrab == Options.PalmGrab)
@@ -157,7 +216,7 @@ namespace HexR
                 }
                 if (!RPalm && !LPalm)
                 {
-                    TheObject.transform.SetParent(OriginalParent.transform);
+                    TheObject.transform.SetParent(OriginalParent);
                 }
             }
 
@@ -244,13 +303,17 @@ namespace HexR
                 InvokeEventReady = false;
             }
 
+            grabbingTracker = ThePressureTracker;
             TriggerHaptics(ThePressureTracker, IsLeft);
 
-            StartCoroutine(ResetGrab(fingerUseTracking, ThePressureTracker));
+            if (resetGrab == null)
+            {
+                resetGrab = StartCoroutine(ResetGrab(fingerUseTracking, ThePressureTracker));
+            }
         }
         private void NotGrab(PressureTrackerMain ThePressureTracker)
         {
-            TheObject.transform.SetParent(OriginalParent.transform);
+            TheObject.transform.SetParent(OriginalParent);
             ThePressureTracker?.HandGrabbingCheck(false); // change grab state back to false
 
             #region Rigidbody Settings
@@ -306,9 +369,7 @@ namespace HexR
                         }
                         if (ClutchState.Length > 0)
                         {
-                            HaptGloveHandler gloveHandler = pressureTrackerMain.GetComponent<HaptGloveHandler>();
-                            byte[] btData = gloveHandler.haptics.ApplyHaptics(ClutchState, (byte)HapticStrength, false);
-                            gloveHandler.BTSend(btData);
+                            SendClutchStates(pressureTrackerMain, ClutchState);
                         }
                     }
                     else
@@ -343,9 +404,7 @@ namespace HexR
                         // Send haptics data if there are any clutch states
                         if (ClutchState.Length > 0)
                         {
-                            HaptGloveHandler gloveHandler = pressureTrackerMain.GetComponent<HaptGloveHandler>();
-                            byte[] btData = gloveHandler.haptics.ApplyHaptics(ClutchState, (byte)HapticStrength, false);
-                            gloveHandler.BTSend(btData);
+                            SendClutchStates(pressureTrackerMain, ClutchState);
                         }
                     } // Right hand hexr trigger
 
@@ -359,30 +418,58 @@ namespace HexR
             if (HapticStrength == 0) return;
 
             byte[][] ClutchState = new byte[][] { new byte[] { 0, 2 }, new byte[] { 1, 2 }, new byte[] { 2, 2 }, new byte[] { 3, 2 }, new byte[] { 4, 2 }, new byte[] { 5, 2 } };
-            HaptGloveHandler gloveHandler = pressureTrackerMain.GetComponent<HaptGloveHandler>();
-            byte[] btData = gloveHandler.haptics.ApplyHaptics(ClutchState, (byte)60, false);
-            gloveHandler.BTSend(btData);
+            SendClutchStates(pressureTrackerMain, ClutchState);
             // Reset all haptic states
             LThumbHaptics = LIndexHaptics = LMiddleHaptics = LRingHaptics = LLittleHaptics = LPalmHaptics = false;
             RThumbHaptics = RIndexHaptics = RMiddleHaptics = RRingHaptics = RLittleHaptics = RPalmHaptics = false;
         }
 
+        // Each clutch state is { channel, 0 = press | 2 = release }, channels in Haptics.Finger
+        // order. Until 0.9.4 these went out through the deprecated ApplyHaptics with
+        // HapticStrength as raw kPa -- which the glove ignores below 15, so the default of 10
+        // was never felt -- to a glove handler looked up on the Pressure Controller, which never
+        // has one, so every grab threw. Now it is the current pressure command, on the same
+        // 10-60 scale as Interactable Haptics, to the handler for that hand.
+        private void SendClutchStates(PressureTrackerMain pressureTrackerMain, byte[][] clutchStates)
+        {
+            HaptGloveHandler gloveHandler = pressureTrackerMain != null ? pressureTrackerMain.ResolveGloveHandler() : null;
+            if (gloveHandler == null || gloveHandler.haptics == null)
+            {
+                return; // no glove for this hand: nothing to feel, and nothing to throw into the grab
+            }
+
+            float intensity = PressureTrackerMain.StrengthToIntensity(HapticStrength);
+            List<byte> frame = new List<byte>();
+            foreach (byte[] clutch in clutchStates)
+            {
+                frame.AddRange(gloveHandler.haptics.HEXRPressure((Haptics.Finger)clutch[0], clutch[1] == 0, intensity, 1f));
+            }
+            gloveHandler.BTSend(frame.ToArray());
+        }
+
         IEnumerator ResetGrab(FingerUseTracking fingerUseTracking, PressureTrackerMain ThePressureTracker)
         {
-            // Wait for the specified delay time
+            // One of these per grab. IsGrab runs every frame of a grab and used to start a new
+            // copy each time, so a held object piled up one coroutine for every frame it was held.
             yield return new WaitForSeconds(0.5f);
-            // every 0.2 sec check if hand is open
+
+            // Then once a frame. Update sets isGrab again for as long as the grab holds, so
+            // finding it still cleared here means the fingers have let go on their own.
             // Without a FingerUseTracking on the hand there is no open-hand signal, and
             // the release comes from the grab interactor instead.
-            if (fingerUseTracking != null && fingerUseTracking.isHandOpen() && isGrab)
+            while (isGrab)
             {
-                NotGrab(ThePressureTracker);
-            }
-            else if (isGrab)
-            {
+                if (fingerUseTracking != null && fingerUseTracking.isHandOpen())
+                {
+                    NotGrab(ThePressureTracker);
+                    break;
+                }
+
                 isGrab = false;
-                StartCoroutine(ResetGrab(fingerUseTracking, ThePressureTracker));
+                yield return null;
             }
+
+            resetGrab = null;
         }
         private void OnValidate()
         {

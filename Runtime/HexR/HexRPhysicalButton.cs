@@ -53,7 +53,7 @@ namespace HexR
         [Tooltip("Local-space direction the cap travels when pressed.")]
         public Vector3 pressDirection = new Vector3(0f, 0f, -1f);
 
-        [Tooltip("Pressure applied to the pressing finger while held. 0 is off, 60 is firm.")]
+        [Tooltip("Pressure applied to the pressing finger while held: 10 is barely there, 60 is firm, 0 is off.")]
         [Range(0f, 60f)]
         public float pressPressure = 40f;
 
@@ -146,7 +146,9 @@ namespace HexR
 
             if (pressPressure > 0f)
             {
-                trigger.TriggerFixPressure(pressPressure);
+                // pressPressure is on the 10-60 scale; TriggerFixPressure takes 0.1-1, and before
+                // 0.9.4 every press arrived as full pressure because nothing converted it.
+                trigger.TriggerFixPressure(PressureTrackerMain.StrengthToIntensity(pressPressure));
             }
         }
 

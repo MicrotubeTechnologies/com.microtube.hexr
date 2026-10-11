@@ -45,17 +45,28 @@ public class HexRUsable : MonoBehaviour
     }
     private void OnTriggerEnter(Collider other)
     {
-        if(other.name.Contains("R_"))
-        {
-            Currentfingerusetracking = RfingerUseTracking;
-        }
-        if (other.name.Contains("L_"))
-        {
-            Currentfingerusetracking = LfingeruseTracking;
-        }
+        TrackHandOf(other);
     }
     private void OnTriggerStay(Collider other)
     {
+        TrackHandOf(other);
+    }
+
+    // Which hand touched, from the HapticFingerTrigger Auto Setup puts on every fingertip and
+    // palm collider -- the way SpecialHaptics and HexRGrabbable already tell. Until 0.9.4 this
+    // read "L_"/"R_" from the collider's name, which only Unity XR Hands' joints carry; Meta's
+    // are named XRHand_..., so on Meta no touch was ever matched to a hand. The name test is
+    // kept as a fallback for colliders added by hand without a HapticFingerTrigger.
+    private void TrackHandOf(Collider other)
+    {
+        if (other.TryGetComponent(out HapticFingerTrigger trigger))
+        {
+            Currentfingerusetracking = trigger.handType == HapticFingerTrigger.HandType.Right
+                ? RfingerUseTracking
+                : LfingeruseTracking;
+            return;
+        }
+
         if (other.name.Contains("R_"))
         {
             Currentfingerusetracking = RfingerUseTracking;
@@ -134,7 +145,9 @@ public class HexRUsable : MonoBehaviour
             WhenUseTriggerEvents?.Invoke();
             Currentfingerusetracking = null;
         }
-        NotUseChecker();
+        // NotUseChecker used to be called here as well. Right after a use it read the tracking
+        // just cleared above and threw; without a use it fired WhenStopUsingTriggerEvents every
+        // frame the finger stayed open. Update calls it once the object is actually in use.
     }
     public void NotUseChecker()
     {
