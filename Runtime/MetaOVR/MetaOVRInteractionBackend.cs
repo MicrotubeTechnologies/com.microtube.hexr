@@ -68,14 +68,17 @@ namespace HexR.MetaOVR
                 grabbable.InjectOptionalRigidbody(body);
             }
 
-            // HandGrabInteractable finds the Grabbable above as its own pointable element, so the
-            // only thing it has to be handed is the body.
+            // The interactable has to be handed the Grabbable as its pointable element, or a grab
+            // selects it and nothing moves. Its Reset makes that link, but Reset is Editor-only and
+            // only runs when a component is added outside Play mode -- in Play mode and on the
+            // headset, where the menu builds itself, it never runs.
             HandGrabInteractable interactable = target.AddComponent<HandGrabInteractable>();
             if (body != null)
             {
                 interactable.InjectRigidbody(body);
             }
 
+            interactable.InjectOptionalPointableElement(grabbable);
             interactable.InjectSupportedGrabTypes(GrabTypeFlags.All);
         }
 
