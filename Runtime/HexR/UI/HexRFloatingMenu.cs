@@ -119,16 +119,10 @@ public class HexRFloatingMenu : MonoBehaviour
     private const float k_ReadoutLabelWidth = 76f;
     private static readonly string[] k_ChannelNames = { "Thumb", "Index", "Middle", "Ring", "Pinky", "Palm" };
 
-    private static readonly Color k_Background = new Color32(0x15, 0x18, 0x1E, 0xF5);
-    private static readonly Color k_Header = new Color32(0x2D, 0x35, 0x42, 0xFF);
-    private static readonly Color k_SectionLabel = new Color32(0x8A, 0x93, 0xA3, 0xFF);
-    private static readonly Color k_ButtonNormal = new Color32(0x2B, 0x34, 0x42, 0xFF);
-    private static readonly Color k_ButtonHighlight = new Color32(0x3B, 0x47, 0x59, 0xFF);
-    private static readonly Color k_ButtonPressed = new Color32(0x4D, 0x5D, 0x74, 0xFF);
-    private static readonly Color k_Accent = new Color32(0x1E, 0x6F, 0xEB, 0xFF);
-    private static readonly Color k_Text = new Color32(0xF0, 0xF3, 0xF7, 0xFF);
-    private static readonly Color k_TextDim = new Color32(0x9A, 0xA4, 0xB4, 0xFF);
-    private static readonly Color k_Warn = new Color32(0xFF, 0x7A, 0x6B, 0xFF);
+    // Section labels sit this far right of the margin, behind a short accent rule.
+    private const float k_EyebrowIndent = 22f;
+
+    // Colours, fonts and corners are HexRMenuLook's.
 
     private RectTransform panel;
     private Canvas canvas;
@@ -142,8 +136,10 @@ public class HexRFloatingMenu : MonoBehaviour
     private readonly List<GameObject> demoGroups = new List<GameObject>();
     private readonly List<Button> demoButtons = new List<Button>();
     private readonly List<Button> sceneButtons = new List<Button>();
-    private readonly List<Image> sceneButtonImages = new List<Image>();
-    private readonly List<Image> demoButtonImages = new List<Image>();
+    private readonly List<HexRMenuButton> demoButtonLooks = new List<HexRMenuButton>();
+
+    // Whether each glove's button is showing as connected, so it is recoloured only on a change.
+    private readonly bool[] statusShownConnected = new bool[2];
 
     // Readout cells, left hand's six channels then the right's. What each cell last showed is kept
     // so the text is only rebuilt when a channel is triggered, and the last value survives a scene
@@ -244,6 +240,7 @@ public class HexRFloatingMenu : MonoBehaviour
         }
 
         UpdateHapticsReadout();
+        UpdateGloveStatus();
     }
 
     private void OnDestroy()
@@ -502,7 +499,44 @@ public class HexRFloatingMenu : MonoBehaviour
         TextMeshProUGUI status = left ? leftStatus : rightStatus;
         if (status != null)
         {
-            status.color = k_Warn;
+            status.color = HexRMenuLook.Warn;
+        }
+    }
+
+    /// <summary>
+    /// A connected glove's button turns mint. Read from the glove's handler rather than from the
+    /// status text, which is the manager's to word and reads "connected" while it starts up and
+    /// "ready" once it has.
+    ///
+    /// Only the change is acted on, and dropping out of connected only takes the mint away: a drop
+    /// the manager has already reported has turned the label to the warning colour, which stays.
+    /// </summary>
+    private void UpdateGloveStatus()
+    {
+        for (int hand = 0; hand < 2; hand++)
+        {
+            TextMeshProUGUI status = hand == 0 ? leftStatus : rightStatus;
+            if (status == null)
+            {
+                continue;
+            }
+
+            HaptGlove.HaptGloveHandler handler = readoutHands[hand];
+            bool connected = handler != null && handler.bleConnected;
+            if (connected == statusShownConnected[hand])
+            {
+                continue;
+            }
+
+            statusShownConnected[hand] = connected;
+            if (connected)
+            {
+                status.color = HexRMenuLook.Ok;
+            }
+            else if (status.color == HexRMenuLook.Ok)
+            {
+                status.color = HexRMenuLook.Text;
+            }
         }
     }
 
@@ -510,7 +544,7 @@ public class HexRFloatingMenu : MonoBehaviour
     {
         if (leftStatus != null)
         {
-            leftStatus.color = k_TextDim;
+            leftStatus.color = HexRMenuLook.Muted;
         }
 
         HexRManager manager = ResolveManager();
@@ -528,7 +562,7 @@ public class HexRFloatingMenu : MonoBehaviour
     {
         if (rightStatus != null)
         {
-            rightStatus.color = k_TextDim;
+            rightStatus.color = HexRMenuLook.Muted;
         }
 
         HexRManager manager = ResolveManager();
@@ -575,12 +609,12 @@ public class HexRFloatingMenu : MonoBehaviour
             // No rig in the scene yet, so there is nothing to draw colliders for. Say so rather
             // than offering a button that quietly does nothing.
             collidersLabel.text = "Colliders  -  no rig";
-            collidersLabel.color = k_TextDim;
+            collidersLabel.color = HexRMenuLook.Muted;
             return;
         }
 
         collidersLabel.text = visualizer != null && visualizer.IsShowing ? "Hide Colliders" : "Show Colliders";
-        collidersLabel.color = k_Text;
+        collidersLabel.color = HexRMenuLook.Text;
     }
 
     /// <summary>
@@ -617,7 +651,7 @@ public class HexRFloatingMenu : MonoBehaviour
         // Rebuilt from scratch on every scene load, and on every inspector change in edit mode,
         // so nothing may carry over.
         demoButtons.Clear();
-        demoButtonImages.Clear();
+        demoButtonLooks.Clear();
         pixelsToMetres = panelWidth / k_PanelWidthPx;
 
         GameObject canvasGo = new GameObject("Panel", typeof(RectTransform), typeof(Canvas),
@@ -645,8 +679,16 @@ public class HexRFloatingMenu : MonoBehaviour
         scaler.dynamicPixelsPerUnit = 4f;
         scaler.referencePixelsPerUnit = 100f;
 
-        Image background = NewImage("Background", panel, k_Background);
+        // Rounded dark glass with a hairline round its edge, which is what keeps a dark panel
+        // reading as one against a dark room.
+        Image background = NewImage("Background", panel, HexRMenuLook.Panel);
         Stretch(background.rectTransform);
+        HexRMenuLook.Round(background, HexRMenuLook.PanelRadius, true);
+
+        Image edge = NewImage("Outline", panel, HexRMenuLook.Line2);
+        Stretch(edge.rectTransform);
+        HexRMenuLook.Round(edge, HexRMenuLook.PanelRadius, false);
+        edge.raycastTarget = false;
 
         float y = 0f;
         y = BuildHeader(y);
@@ -662,16 +704,32 @@ public class HexRFloatingMenu : MonoBehaviour
 
     private float BuildHeader(float y)
     {
-        Image header = NewImage("Header", panel, k_Header);
+        // Still the grab handle -- AddGrab puts the collider over it -- but drawn as a title line on
+        // the glass rather than a slab of colour.
+        Image header = NewImage("Header", panel, Color.clear);
         Place(header.rectTransform, 0f, y, k_PanelWidthPx, k_HeaderHeight);
 
-        TextMeshProUGUI title = NewLabel("Title", header.rectTransform, "HexR", 20f,
-            FontStyles.Bold, k_Text, TextAlignmentOptions.Left);
-        Stretch(title.rectTransform, k_Margin, 0f);
+        Image accent = NewImage("Header Accent", header.rectTransform, HexRMenuLook.Accent);
+        Place(accent.rectTransform, k_Margin, -k_HeaderHeight * 0.5f + 1.5f, 16f, 3f);
+        accent.raycastTarget = false;
 
-        TextMeshProUGUI hint = NewLabel("Hint", header.rectTransform, "grab here to move", 12f,
-            FontStyles.Normal, k_TextDim, TextAlignmentOptions.Right);
+        // "HEXR  MENU": the wordmark split, heavy then muted.
+        TMP_FontAsset display = HexRMenuLook.Display;
+        string wordmark = "HEXR <color=#" + ColorUtility.ToHtmlStringRGB(HexRMenuLook.Muted) + ">MENU</color>";
+        TextMeshProUGUI title = NewLabel("Title", header.rectTransform, wordmark, 17f,
+            Weight(display, FontStyles.Bold), HexRMenuLook.Text, TextAlignmentOptions.Left, display);
+        title.richText = true;
+        Track(title, 10f);
+        Stretch(title.rectTransform, k_Margin, 0f);
+        title.rectTransform.offsetMin = new Vector2(k_Margin + 26f, 0f);
+
+        TextMeshProUGUI hint = NewLabel("Hint", header.rectTransform, "grab to move", 11f,
+            FontStyles.Normal, HexRMenuLook.Faint, TextAlignmentOptions.Right, HexRMenuLook.Body);
         Stretch(hint.rectTransform, k_Margin, 0f);
+
+        Image rule = NewImage("Header Rule", panel, HexRMenuLook.Line);
+        Place(rule.rectTransform, k_Margin, y - k_HeaderHeight + 1f, k_PanelWidthPx - k_Margin * 2f, 1.5f);
+        rule.raycastTarget = false;
 
         return y - k_HeaderHeight - k_Gap;
     }
@@ -698,7 +756,7 @@ public class HexRFloatingMenu : MonoBehaviour
     private float GloveRow(float y, string label, UnityEngine.Events.UnityAction onClick,
         out TextMeshProUGUI status)
     {
-        NewButton(label, y, k_ButtonHeight, k_ButtonNormal, onClick, out status);
+        NewButton(label, y, k_ButtonHeight, onClick, out status);
 
         return y - k_ButtonHeight - k_Gap;
     }
@@ -707,8 +765,7 @@ public class HexRFloatingMenu : MonoBehaviour
     {
         y = SectionLabel("VIEW", y);
 
-        NewButton("Show Colliders", y, k_ButtonHeight, k_ButtonNormal, ToggleColliders,
-            out collidersLabel);
+        NewButton("Show Colliders", y, k_ButtonHeight, ToggleColliders, out collidersLabel);
         RefreshCollidersLabel();
 
         return y - k_ButtonHeight - k_Gap;
@@ -742,29 +799,33 @@ public class HexRFloatingMenu : MonoBehaviour
         float leftX = k_Margin + k_ReadoutLabelWidth;
         float rightX = leftX + valueWidth + k_GridGap;
 
-        TextMeshProUGUI leftHead = NewLabel("Left", panel, "Left", 11f, FontStyles.Bold, k_SectionLabel,
-            TextAlignmentOptions.Center);
+        TMP_FontAsset headFont = HexRMenuLook.DisplayBold;
+        TextMeshProUGUI leftHead = NewLabel("Left", panel, "LEFT", 11f, Weight(headFont, FontStyles.Bold),
+            HexRMenuLook.Faint, TextAlignmentOptions.Center, headFont);
+        Track(leftHead, 16f);
         Place(leftHead.rectTransform, leftX, y, valueWidth, k_ReadoutRowHeight);
-        TextMeshProUGUI rightHead = NewLabel("Right", panel, "Right", 11f, FontStyles.Bold, k_SectionLabel,
-            TextAlignmentOptions.Center);
+        TextMeshProUGUI rightHead = NewLabel("Right", panel, "RIGHT", 11f, Weight(headFont, FontStyles.Bold),
+            HexRMenuLook.Faint, TextAlignmentOptions.Center, headFont);
+        Track(rightHead, 16f);
         Place(rightHead.rectTransform, rightX, y, valueWidth, k_ReadoutRowHeight);
         y -= k_ReadoutRowHeight;
 
         for (int c = 0; c < k_Channels; c++)
         {
             TextMeshProUGUI name = NewLabel(k_ChannelNames[c], panel, k_ChannelNames[c], 13f,
-                FontStyles.Normal, k_TextDim, TextAlignmentOptions.Left);
+                FontStyles.Normal, HexRMenuLook.Muted, TextAlignmentOptions.Left, HexRMenuLook.Body);
             Place(name.rectTransform, k_Margin, y, k_ReadoutLabelWidth, k_ReadoutRowHeight);
 
             for (int hand = 0; hand < 2; hand++)
             {
                 int i = hand * k_Channels + c;
-                Image cell = NewImage(k_ChannelNames[c] + (hand == 0 ? " L" : " R"), panel, k_ButtonNormal);
+                Image cell = NewImage(k_ChannelNames[c] + (hand == 0 ? " L" : " R"), panel, HexRMenuLook.CellFace);
                 Place(cell.rectTransform, hand == 0 ? leftX : rightX, y, valueWidth, k_ReadoutRowHeight);
+                HexRMenuLook.Round(cell, HexRMenuLook.CellRadius, true);
                 cell.raycastTarget = false;
 
                 TextMeshProUGUI value = NewLabel("Value", cell.rectTransform, "-", 13f, FontStyles.Normal,
-                    k_TextDim, TextAlignmentOptions.Center);
+                    HexRMenuLook.Muted, TextAlignmentOptions.Center, HexRMenuLook.Body);
                 value.enableAutoSizing = true;
                 value.fontSizeMin = 8f;
                 value.fontSizeMax = 13f;
@@ -840,8 +901,8 @@ public class HexRFloatingMenu : MonoBehaviour
 
                 readoutShownLit[i] = lit;
                 readoutValues[i].text = readoutLast[i] ?? "-";
-                readoutValues[i].color = lit ? k_Text : k_TextDim;
-                readoutCells[i].color = lit ? k_Accent : k_ButtonNormal;
+                readoutValues[i].color = lit ? HexRMenuLook.Text : HexRMenuLook.Muted;
+                readoutCells[i].color = lit ? HexRMenuLook.Accent : HexRMenuLook.CellFace;
             }
         }
 
@@ -897,7 +958,6 @@ public class HexRFloatingMenu : MonoBehaviour
 
         int current = SceneManager.GetActiveScene().buildIndex;
         sceneButtons.Clear();
-        sceneButtonImages.Clear();
 
         for (int i = 0; i < count; i++)
         {
@@ -906,20 +966,22 @@ public class HexRFloatingMenu : MonoBehaviour
             GridCell(i, y, out x, out cellY, out width);
 
             Button button = NewButtonAt(SceneDisplayName(index), x, cellY, width,
-                k_GridButtonHeight, index == current ? k_Accent : k_ButtonNormal, 12f,
-                () => LoadSceneAt(index), out _);
+                k_GridButtonHeight, index == current, 12f, () => LoadSceneAt(index), out _);
 
             // The scene you are already in is not somewhere to go.
             button.interactable = index != current;
 
             sceneButtons.Add(button);
-            sceneButtonImages.Add(button.GetComponent<Image>());
         }
 
         return y - GridHeight(count) - k_Gap;
     }
 
-    /// <summary>"Assets/Scenes/2.Hospital Tutorial.unity" reads as "2.Hospital Tutorial".</summary>
+    /// <summary>
+    /// "Assets/Scenes/2.Hospital Tutorial.unity" reads as "2.Hospital Tutorial", and a file name
+    /// written in one word reads as words: "LivingHeart" as "Living Heart", "FindTheLump" as
+    /// "Find the Lump".
+    /// </summary>
     private static string SceneDisplayName(int buildIndex)
     {
         string path = SceneUtility.GetScenePathByBuildIndex(buildIndex);
@@ -932,7 +994,38 @@ public class HexRFloatingMenu : MonoBehaviour
         int dot = path.LastIndexOf('.');
         int start = slash + 1;
         int length = (dot > start ? dot : path.Length) - start;
-        return path.Substring(start, length);
+        return Words(path.Substring(start, length));
+    }
+
+    private static string Words(string name)
+    {
+        if (string.IsNullOrEmpty(name) || name.IndexOf(' ') >= 0)
+        {
+            return name;
+        }
+
+        System.Text.StringBuilder spaced = new System.Text.StringBuilder(name.Length + 4);
+        for (int i = 0; i < name.Length; i++)
+        {
+            if (i > 0 && char.IsUpper(name[i]) && char.IsLower(name[i - 1]))
+            {
+                spaced.Append(' ');
+            }
+
+            spaced.Append(name[i]);
+        }
+
+        string[] words = spaced.ToString().Split(' ');
+        for (int i = 1; i < words.Length; i++)
+        {
+            string w = words[i];
+            if (w == "The" || w == "A" || w == "Of" || w == "And")
+            {
+                words[i] = w.ToLowerInvariant();
+            }
+        }
+
+        return string.Join(" ", words);
     }
 
     private void LoadSceneAt(int buildIndex)
@@ -978,10 +1071,10 @@ public class HexRFloatingMenu : MonoBehaviour
             GridCell(i, y, out x, out cellY, out width);
 
             Button button = NewButtonAt(DemoDisplayName(group.name), x, cellY, width,
-                k_GridButtonHeight, k_ButtonNormal, 12f, () => ShowDemo(group), out _);
+                k_GridButtonHeight, false, 12f, () => ShowDemo(group), out _);
 
             demoButtons.Add(button);
-            demoButtonImages.Add(button.GetComponent<Image>());
+            demoButtonLooks.Add(button.GetComponent<HexRMenuButton>());
         }
 
         return y - GridHeight(demoGroups.Count) - k_Gap;
@@ -1034,7 +1127,7 @@ public class HexRFloatingMenu : MonoBehaviour
         for (int i = 0; i < demoButtons.Count && i < demoGroups.Count; i++)
         {
             bool on = demoGroups[i] != null && demoGroups[i].activeSelf;
-            demoButtonImages[i].color = on ? k_Accent : k_ButtonNormal;
+            demoButtonLooks[i].Active = on;
             demoButtons[i].interactable = !on;
         }
     }
@@ -1126,11 +1219,13 @@ public class HexRFloatingMenu : MonoBehaviour
         collidersLabel = null;
         demoGroups.Clear();
         demoButtons.Clear();
-        demoButtonImages.Clear();
+        demoButtonLooks.Clear();
         sceneButtons.Clear();
-        sceneButtonImages.Clear();
         System.Array.Clear(readoutValues, 0, readoutValues.Length);
         System.Array.Clear(readoutCells, 0, readoutCells.Length);
+
+        // The new labels start in the plain text colour, so a connected glove is recoloured again.
+        System.Array.Clear(statusShownConnected, 0, statusShownConnected.Length);
     }
 
 #if UNITY_EDITOR
@@ -1228,47 +1323,67 @@ public class HexRFloatingMenu : MonoBehaviour
     // Small UI builders
     // ---------------------------------------------
 
+    /// <summary>
+    /// A section label as an ARIS eyebrow: small spaced capitals, muted, behind a short accent
+    /// rule. The rule is the label's child, so a copy of the label brings it along.
+    /// </summary>
     private float SectionLabel(string text, float y)
     {
-        TextMeshProUGUI label = NewLabel(text, panel, text, 12f, FontStyles.Bold, k_SectionLabel,
-            TextAlignmentOptions.Left);
-        label.characterSpacing = 8f;
-        Place(label.rectTransform, k_Margin, y, k_PanelWidthPx - k_Margin * 2f, k_SectionLabelHeight);
+        TMP_FontAsset font = HexRMenuLook.DisplayBold;
+        TextMeshProUGUI label = NewLabel(text, panel, text, 11f, Weight(font, FontStyles.Bold),
+            HexRMenuLook.Muted, TextAlignmentOptions.Left, font);
+        Track(label, 22f);
+        Place(label.rectTransform, k_Margin + k_EyebrowIndent, y,
+            k_PanelWidthPx - k_Margin * 2f - k_EyebrowIndent, k_SectionLabelHeight);
+
+        Image rule = NewImage("Rule", label.rectTransform, HexRMenuLook.Accent);
+        RectTransform rt = rule.rectTransform;
+        rt.anchorMin = new Vector2(0f, 0.5f);
+        rt.anchorMax = new Vector2(0f, 0.5f);
+        rt.pivot = new Vector2(0f, 0.5f);
+        rt.sizeDelta = new Vector2(14f, 2.5f);
+        rt.anchoredPosition = new Vector2(-k_EyebrowIndent, 0f);
+        rule.raycastTarget = false;
 
         return y - k_SectionLabelHeight;
     }
 
-    private Button NewButton(string text, float y, float height, Color color,
+    private Button NewButton(string text, float y, float height,
         UnityEngine.Events.UnityAction onClick, out TextMeshProUGUI label)
     {
-        return NewButtonAt(text, k_Margin, y, k_PanelWidthPx - k_Margin * 2f, height, color, 15f,
+        return NewButtonAt(text, k_Margin, y, k_PanelWidthPx - k_Margin * 2f, height, false, 15f,
             onClick, out label);
     }
 
-    private Button NewButtonAt(string text, float x, float y, float width, float height, Color color,
+    /// <summary>
+    /// A pill button: <paramref name="active"/> draws it as the one in use. Its colours, for every
+    /// state, are <see cref="HexRMenuButton"/>'s.
+    /// </summary>
+    private Button NewButtonAt(string text, float x, float y, float width, float height, bool active,
         float fontSize, UnityEngine.Events.UnityAction onClick, out TextMeshProUGUI label)
     {
-        Image image = NewImage(text, panel, color);
+        Image image = NewImage(text, panel, HexRMenuLook.GhostFace);
         Place(image.rectTransform, x, y, width, height);
+        HexRMenuLook.Round(image, height * 0.5f, true);
+
+        // The edge is drawn over the face, under the label.
+        Image edge = NewImage("Outline", image.rectTransform, HexRMenuLook.Line2);
+        Stretch(edge.rectTransform);
+        HexRMenuLook.Round(edge, height * 0.5f, false);
+        edge.raycastTarget = false;
 
         Button button = image.gameObject.AddComponent<Button>();
         button.targetGraphic = image;
         button.transition = Selectable.Transition.ColorTint;
 
-        ColorBlock colors = button.colors;
-        colors.normalColor = Color.white;
-        colors.highlightedColor = Multiply(k_ButtonHighlight, color);
-        colors.pressedColor = Multiply(k_ButtonPressed, color);
-        colors.selectedColor = Color.white;
-        colors.disabledColor = new Color(1f, 1f, 1f, 0.6f);
-        colors.fadeDuration = 0.05f;
-        button.colors = colors;
-
         button.onClick.AddListener(onClick);
-        AddPhysicalPress(image, width, height, color, onClick);
+        AddPhysicalPress(image, width, height, onClick);
 
-        label = NewLabel("Label", image.rectTransform, text, fontSize, FontStyles.Normal, k_Text,
-            TextAlignmentOptions.Center);
+        // After the press volume, which it hooks for the pressed colour.
+        image.gameObject.AddComponent<HexRMenuButton>().Init(image, edge, active);
+
+        label = NewLabel("Label", image.rectTransform, text, fontSize, FontStyles.Normal, HexRMenuLook.Text,
+            TextAlignmentOptions.Center, HexRMenuLook.BodyStrong);
 
         // The grid columns are narrower than the longest scene name, so a label that does not fit
         // shrinks instead of being clipped to something unreadable.
@@ -1280,10 +1395,6 @@ public class HexRFloatingMenu : MonoBehaviour
         return button;
     }
 
-    /// <summary>
-    /// Button tinting multiplies the target graphic's own colour, so the highlight and pressed
-    /// states have to be expressed relative to it rather than as flat colours.
-    /// </summary>
     /// <summary>
     /// Gives a canvas button a press volume a finger can actually enter.
     ///
@@ -1298,7 +1409,7 @@ public class HexRFloatingMenu : MonoBehaviour
     /// depends on how the panel was oriented, and getting it backwards would silently halve the
     /// hit volume.
     /// </summary>
-    private void AddPhysicalPress(Image image, float width, float height, Color baseColor,
+    private void AddPhysicalPress(Image image, float width, float height,
         UnityEngine.Events.UnityAction onClick)
     {
         BoxCollider box = image.gameObject.AddComponent<BoxCollider>();
@@ -1316,28 +1427,33 @@ public class HexRFloatingMenu : MonoBehaviour
 
         HexRPhysicalButton press = image.gameObject.AddComponent<HexRPhysicalButton>();
 
-        // No cap travel: the visual feedback is the colour tint below. Travel is expressed in
-        // metres, and this transform lives in pixel space, so a sensible metre value would move
-        // the button clean off the panel.
+        // No cap travel: the visual feedback is the button darkening (HexRMenuButton). Travel is
+        // expressed in metres, and this transform lives in pixel space, so a sensible metre value
+        // would move the button clean off the panel.
         press.travel = 0f;
         press.pressPressure = 35f;
         press.onPressed.AddListener(onClick);
-
-        // uGUI's own ColorTint never fires, because nothing is sending pointer events.
-        Color pressed = Multiply(k_ButtonPressed, baseColor);
-        press.onPressed.AddListener(() => image.color = pressed);
-        press.onReleased.AddListener(() => image.color = baseColor);
     }
 
-    private static Color Multiply(Color wanted, Color baseColor)
+    /// <summary>
+    /// The style for a label in one of the menu's fonts, which carry their own weight: regular,
+    /// or <paramref name="fallback"/> when the font could not be loaded and TextMesh Pro's
+    /// default is drawn instead.
+    /// </summary>
+    private static FontStyles Weight(TMP_FontAsset font, FontStyles fallback)
     {
-        return new Color(
-            baseColor.r > 0.001f ? wanted.r / baseColor.r : 1f,
-            baseColor.g > 0.001f ? wanted.g / baseColor.g : 1f,
-            baseColor.b > 0.001f ? wanted.b / baseColor.b : 1f,
-            1f);
+        return font != null ? FontStyles.Normal : fallback;
     }
 
+    /// <summary>
+    /// Spaced capitals, without kerning: the fonts' kerning pairs are drawn for normal spacing,
+    /// and under wide tracking they pull some letters together, so "GLOVES" reads "G LOVE S".
+    /// </summary>
+    private static void Track(TextMeshProUGUI label, float spacing)
+    {
+        label.fontFeatures.Remove(UnityEngine.TextCore.OTL_FeatureTag.kern);
+        label.characterSpacing = spacing;
+    }
 
     private static Image NewImage(string name, Transform parent, Color color)
     {
@@ -1354,16 +1470,17 @@ public class HexRFloatingMenu : MonoBehaviour
     }
 
     private static TextMeshProUGUI NewLabel(string name, Transform parent, string text, float size,
-        FontStyles style, Color color, TextAlignmentOptions alignment)
+        FontStyles style, Color color, TextAlignmentOptions alignment, TMP_FontAsset font = null)
     {
         GameObject go = new GameObject(name, typeof(RectTransform));
         go.layer = 0;
         go.transform.SetParent(parent, false);
 
-        // Font left unassigned on purpose: TMP fills in TMP_Settings.defaultFontAsset itself, which
-        // is whatever the project's TextMesh Pro resources supply. Naming a font here would tie the
-        // panel to one asset path.
+        // One of the menu's own fonts, which ship with the package (HexRMenuLook). Without one, TMP
+        // fills in TMP_Settings.defaultFontAsset itself, whatever the project's TextMesh Pro
+        // resources supply -- which also stays the fallback for any character these fonts lack.
         TextMeshProUGUI label = go.AddComponent<TextMeshProUGUI>();
+        HexRMenuLook.SetFont(label, font);
         label.text = text;
         label.fontSize = size;
         label.fontStyle = style;

@@ -4,7 +4,8 @@
 license covers **Microtube Technologies' own work only**:
 
 - everything under `Runtime/HexR/`, `Runtime/HaptGlove/`, `Runtime/MetaOVR/` and `Editor/`
-- the prefabs, UI and textures under `Runtime/Prefabs/` and `Runtime/UI/`
+- the prefabs, UI and textures under `Runtime/Prefabs/` and `Runtime/UI/`, except the fonts
+  listed below
 - `Runtime/Plugins/ArduinoBluetoothAPILocal.dll`
 
 The components listed below are redistributed with the package but are **not** covered by
@@ -79,6 +80,30 @@ licensed under the **Apache License 2.0 with the Runtime Library Exception**.
 
 - Upstream: https://github.com/apple/swift
 - License: Apache-2.0 WITH Swift-exception
+
+---
+
+## Archivo — SIL Open Font License 1.1
+
+`Runtime/UI/Resources/HexR/Fonts/Archivo-ExtraBold.ttf`, `Archivo-Bold.ttf`
+
+The floating menu's display type: its wordmark, section labels and column heads.
+
+- Upstream: https://github.com/Omnibus-Type/Archivo
+- Copyright 2020 The Archivo Project Authors
+- License: SIL Open Font License 1.1, in full in `Archivo-OFL.txt` beside the fonts
+
+---
+
+## Inter — SIL Open Font License 1.1
+
+`Runtime/UI/Resources/HexR/Fonts/Inter-Medium.ttf`, `Inter-SemiBold.ttf`
+
+The floating menu's reading text and button labels.
+
+- Upstream: https://github.com/rsms/inter
+- Copyright 2016 The Inter Project Authors
+- License: SIL Open Font License 1.1, in full in `Inter-OFL.txt` beside the fonts
 
 ---
 

@@ -34,7 +34,7 @@ Or add it to `Packages/manifest.json` directly:
 ```
 
 Pinning is optional: `main` is kept releasable, so the unpinned URL above always resolves
-the latest release. Append a tag (`#v0.9.5`) when a build has to stay reproducible.
+the latest release. Append a tag (`#v0.9.6`) when a build has to stay reproducible.
 
 Either way, UPM caches a git dependency by the ref it resolved, so an unpinned URL does not
 re-check on its own. To pull a newer `main`, use **Window → Package Manager →
@@ -103,7 +103,10 @@ that keeps its own `HaptGlove.dll` will collide with `HaptGlove.Runtime`.
 - `Runtime/MetaOVR/` (assembly `HexR.Runtime.MetaOVR`) — the only code that touches
   `Oculus.Interaction`. Excluded from the build entirely when the Meta SDK isn't installed.
   See "How the Meta OVR support stays optional" below.
-- `Runtime/UI/` — textures used by the floating menu.
+- `Runtime/UI/` — textures used by the floating menu, and its fonts (Archivo and Inter, SIL
+  OFL 1.1) under `Resources/HexR/Fonts/`. The menu draws itself in the ARIS look shared with
+  Microtube's other apps (`HexRMenuLook`): dark glass, spaced-capital section labels, ghost
+  pill buttons that turn orange for the scene or demo in use, and mint for a connected glove.
 - `Runtime/Prefabs/` — the `HexR Main` rig prefabs, `Pressure Controller` and grab audio.
   See below.
 - `Runtime/HaptGlove/` (assembly `HaptGlove.Runtime`) — the HaptGlove runtime:
