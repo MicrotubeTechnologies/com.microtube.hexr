@@ -10,6 +10,13 @@ using UnityEngine.SceneManagement;
 using TMPro;
 namespace HexR
 {
+    // Awake before anything else in a loading scene, so a duplicate rig (the incoming scene's
+    // copy of one that survived the load) is switched off before its children wake. Otherwise
+    // they woke first: its PointableCanvasModule took over Meta's one-per-scene instance and,
+    // destroyed a frame later, left none for any canvas registering after it, and its glove
+    // handlers ran their shutdown on Bluetooth they never opened. Earlier than the rig's own
+    // EventSystem (-1000). HexRManager has no Update, so only Awake and Start move.
+    [DefaultExecutionOrder(-10000)]
     public class HexRManager : MonoBehaviour
     {
         public static HexRManager Instance { get; private set; }  // ← add here
@@ -222,6 +229,20 @@ namespace HexR
         }
 
         /// <summary>
+        /// For the optional indicator and panel fields. Not `?.`: in the Editor an unassigned
+        /// GameObject field holds Unity's stand-in object rather than null, which `?.` lets
+        /// through and which throws UnassignedReferenceException on use. That threw out of the
+        /// disconnect handler every time Play mode stopped, before the rest of it ran.
+        /// </summary>
+        private static void SetActiveIfAssigned(GameObject target, bool active)
+        {
+            if (target != null)
+            {
+                target.SetActive(active);
+            }
+        }
+
+        /// <summary>
         /// Raised when a connect attempt ends without a live connection, so UI that latched
         /// on the way in (the panel's connect toggles) can unlatch.
         /// </summary>
@@ -408,7 +429,7 @@ namespace HexR
                         + " blocked — allow " + ShortPermissionName(permission)
                         + " in system settings, then try again");
                     EndConnect(hand);
-                    HexRPanel?.SetActive(true);
+                    SetActiveIfAssigned(HexRPanel, true);
                     ConnectAttemptEnded?.Invoke(hand);
                     yield break;
                 }
@@ -618,7 +639,7 @@ namespace HexR
 
             if (hand == HaptGloveHandler.HandType.Left)
             {
-                BluetoothIndicatorL?.SetActive(true);
+                SetActiveIfAssigned(BluetoothIndicatorL, true);
                 if (LeftBtText != null)
                 {
                     LeftBtText.text = "Left connected — starting up…";
@@ -629,7 +650,7 @@ namespace HexR
             }
             else if (hand == HaptGloveHandler.HandType.Right)
             {
-                BluetoothIndicatorR?.SetActive(true);
+                SetActiveIfAssigned(BluetoothIndicatorR, true);
                 if (RightBtText != null)
                 {
                     RightBtText.text = "Right connected — starting up…";
@@ -722,7 +743,7 @@ namespace HexR
 
             if (hand == HaptGloveHandler.HandType.Left)
             {
-                BluetoothIndicatorL?.SetActive(false);
+                SetActiveIfAssigned(BluetoothIndicatorL, false);
                 if(LeftBtText != null)
                 {
                     LeftBtText.text = "Left not found — check Bluetooth permissions, then try again";
@@ -730,14 +751,14 @@ namespace HexR
             }
             else if (hand == HaptGloveHandler.HandType.Right)
             {
-                BluetoothIndicatorR?.SetActive(false);
+                SetActiveIfAssigned(BluetoothIndicatorR, false);
                 if (RightBtText != null)
                 {
                     RightBtText.text = "Right not found — check Bluetooth permissions, then try again";
                 }
             }
             StopBatteryPolling(hand);
-            HexRPanel?.SetActive(true);
+            SetActiveIfAssigned(HexRPanel, true);
             ConnectAttemptEnded?.Invoke(hand);
         }
 
@@ -756,14 +777,14 @@ namespace HexR
 
             if (hand == HaptGloveHandler.HandType.Left)
             {
-                BluetoothIndicatorL?.SetActive(false);
+                SetActiveIfAssigned(BluetoothIndicatorL, false);
             }
             else if (hand == HaptGloveHandler.HandType.Right)
             {
-                BluetoothIndicatorR?.SetActive(false);
+                SetActiveIfAssigned(BluetoothIndicatorR, false);
             }
             StopBatteryPolling(hand);
-            HexRPanel?.SetActive(true);
+            SetActiveIfAssigned(HexRPanel, true);
             // Deliberately no ConnectAttemptEnded here: the handler reopens its own connect
             // campaign on a drop and retries with backoff, so the connect toggle should stay
             // latched. It unlatches from HaptGlove_OnConnectedFailed, which is what fires when
@@ -779,9 +800,9 @@ namespace HexR
                     LeftBtText.text = "Left ready";
                 }
                 if (state)
-                    pumpIndicator_L?.SetActive(true);
+                    SetActiveIfAssigned(pumpIndicator_L, true);
                 else
-                    pumpIndicator_L?.SetActive(false);
+                    SetActiveIfAssigned(pumpIndicator_L, false);
             }
             else if (hand == HaptGloveHandler.HandType.Right)
             {
@@ -790,9 +811,9 @@ namespace HexR
                     RightBtText.text = "Right ready";
                 }
                 if (state)
-                    pumpIndicator_R?.SetActive(true);
+                    SetActiveIfAssigned(pumpIndicator_R, true);
                 else
-                    pumpIndicator_R?.SetActive(false);
+                    SetActiveIfAssigned(pumpIndicator_R, false);
             }
         }
 

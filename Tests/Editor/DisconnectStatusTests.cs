@@ -1,6 +1,7 @@
 using HaptGlove;
 using NUnit.Framework;
 using TMPro;
+using UnityEditor;
 
 namespace HexR.Tests
 {
@@ -49,6 +50,24 @@ namespace HexR.Tests
             Private.Call(rig.Manager, "HaptGlove_OnDisconnected", HaptGloveHandler.HandType.Right);
 
             Assert.AreEqual("Right disconnected — reconnecting…", status.text);
+        }
+
+        [Test]
+        public void UnassignedIndicators_DoNotStopTheHandler()
+        {
+            // Deserializing gives each unassigned GameObject field the Editor's stand-in object,
+            // as a rig loaded from a scene has. `?.` let it through, and it threw out of here
+            // every time Play mode stopped. The round trip loses references to scene objects, so
+            // the ones this test needs are put back.
+            EditorJsonUtility.FromJsonOverwrite(EditorJsonUtility.ToJson(rig.Manager), rig.Manager);
+            Assume.That(object.ReferenceEquals(rig.Manager.BluetoothIndicatorR, null), Is.False);
+            rig.Manager.leftHand = rig.Left;
+            rig.Manager.rightHand = rig.Right;
+            rig.Manager.RightBtText = status;
+            Private.Set(rig.Right, "connectRequested", false);
+
+            Assert.DoesNotThrow(() => Private.Call(rig.Manager, "HaptGlove_OnDisconnected", HaptGloveHandler.HandType.Right));
+            Assert.AreEqual("Right disconnected", status.text);
         }
     }
 }
