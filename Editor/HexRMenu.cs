@@ -88,6 +88,35 @@ namespace HexR
                 + "display. Tick Show Scene Switcher or Show Demo Groups on it to add those.");
         }
 
+        // Opt-in, never part of the rig prefabs: it opens network ports and can ask the wearer to
+        // share their view, which nobody should get just by updating the package. Parented under
+        // the rig so it rides scene loads with it; on its own it would keep itself alive anyway.
+        [MenuItem("HexR/Add HexR Remote", false, 24)]
+        private static void AddRemote()
+        {
+            if (HexRCompat.FindAny<HexRRemote>(true) != null)
+            {
+                Debug.LogWarning("[HexR] This scene already has a HexR Remote -- only one is needed; it rides the rig across scene loads.");
+                return;
+            }
+
+            GameObject instance = new GameObject("HexR Remote");
+            instance.AddComponent<HexRRemote>();
+            Undo.RegisterCreatedObjectUndo(instance, "Add HexR Remote");
+
+            HexRManager controller = HexRCompat.FindAny<HexRManager>();
+            if (controller != null)
+            {
+                Undo.SetTransformParent(instance.transform, controller.transform, "Add HexR Remote");
+            }
+
+            Selection.activeGameObject = instance;
+            EditorGUIUtility.PingObject(instance);
+            EditorSceneManager.MarkSceneDirty(instance.scene);
+            Debug.Log("[HexR] Added HexR Remote. A phone running HexR Tester on the same Wi-Fi can now find "
+                + "this app, connect its gloves and, once the wearer allows it, see the headset view.");
+        }
+
         // The panel does not place itself at runtime -- it stays exactly where the scene puts it --
         // so where it lands here is where the user will find it, and a new GameObject lands at the
         // origin, which on a floor-level rig is under their feet. This puts it within reach at eye

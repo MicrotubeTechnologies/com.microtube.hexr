@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android Library Project manifest for HexR Remote, merged into the consuming app's manifest at
+  build time, the same way hexrbluetooth.androidlib supplies the Bluetooth entries.
+
+  What it adds, and why each one:
+  - INTERNET and ACCESS_NETWORK_STATE: the remote's sockets (UDP announce, TCP control, TCP video)
+    on the local Wi-Fi. Neither tutorial declared INTERNET, and Unity's automatic detection of it
+    is not something to rely on for a feature that is nothing but networking.
+  - FOREGROUND_SERVICE and FOREGROUND_SERVICE_MEDIA_PROJECTION: from Android 14 a screen capture
+    has to run inside a foreground service of type mediaProjection.
+  - ProjectionRequestActivity: invisible host for Android's "allow screen sharing" prompt.
+  - CaptureService: the foreground service that holds the capture. Not stopWithTask: on Quest the
+    prompt activity opens in a task of its own, and Android stops a stopWithTask service when ANY
+    task of the package is removed. Closing the prompt then stopped the service before it reached
+    startForeground, and Android killed the whole app for that. CaptureService.onTaskRemoved ends
+    the capture itself when a task other than the prompt's goes, so it still cannot outlive the
+    app and keep capturing whatever comes on screen next.
+
+  These merge into every app that installs the package, with or without a HexR Remote component
+  in its scenes. Without the component nothing ever starts the activity or the service, and the
+  permissions are all ones Android grants at install with no prompt. POST_NOTIFICATIONS and
+  CHANGE_WIFI_STATE are deliberately absent: Meta reviews both.
+
+  Class names are fully qualified. The classes are compiled into unityLibrary from
+  Runtime/Plugins/Android/HexRRemote, not into this library, and a relative name would resolve
+  against this library's namespace instead.
+
+  Note for editors: XML forbids a double hyphen inside a comment, and Gradle parses this file
+  to resolve the library's namespace, so a stray one fails the Android build rather than being
+  ignored. Keep punctuation in these comments to single hyphens and parentheses.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.microtube.hexr.remote.manifest">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+
+    <application>
+        <!-- No noHistory: the prompt's answer comes back to this activity, and noHistory would
+             let Android discard it while the prompt is in front. -->
+        <activity
+            android:name="com.microtube.hexr.remote.ProjectionRequestActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
+            android:exported="false" />
+
+        <service
+            android:name="com.microtube.hexr.remote.CaptureService"
+            android:foregroundServiceType="mediaProjection"
+            android:exported="false" />
+    </application>
+</manifest>

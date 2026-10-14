@@ -1,0 +1,142 @@
+# HexR Remote protocol, version 1
+
+How a phone (the HexR Tester's **Headsets** tab) finds a HexR app on a headset, connects and
+disconnects its gloves, reads their state and watches the headset view. The headset side is
+`Runtime/HexR/Remote/` and `Runtime/Plugins/Android/HexRRemote/` in this package; the phone side
+is `android/app/src/main/java/com/microtube/hexr/remote/` in HexR-Window-Tester (branch
+`android`). `Tools~/hexr_remote_probe.py` speaks it from a computer.
+
+Everything below is on the local network only. Nothing is encrypted or authenticated: anyone on
+the same Wi-Fi with a HexR Remote client can control a headset that has HexR Remote, and watch it
+once the wearer accepts the capture prompt. Bring a dedicated router to events.
+
+The reference lines and bytes in this document are the ones both test suites use
+(`Tests/Editor/RemoteTests.cs` here, `RemoteProtocolTest.kt` in the tester). Change the protocol
+in both places.
+
+## Ports
+
+| Port | Transport | Direction | What |
+|---|---|---|---|
+| 47800 | UDP broadcast | headset → everyone | Announcement every 2 s |
+| 47801 | TCP | phone ↔ headset | Control: JSON lines |
+| 47802 | TCP | headset → phone | Video, while the view is being shared |
+
+The control and video ports are defaults. If one is taken the headset uses the next free one
+(up to +9, then any free port) and says so: the announcement carries the control port, and the
+status carries the video port. A phone never assumes either.
+
+## Discovery
+
+The headset broadcasts this, as UTF-8 JSON, to `255.255.255.255:47800` every two seconds:
+
+```json
+{"hexr":1,"type":"announce","id":"27c6…","name":"Quest 3","model":"Oculus Quest 3","platform":"quest","app":"HexR Meta Developer Tutorial","appId":"com.Microtube.HexRMetaDeveloperTutorial","hexrVersion":"0.10.0","control":47801,"video":47802,"startedAt":1791966541289}
+```
+
+- The headset's address is the packet's source address; the announcement does not carry it.
+- `id` is Unity's `SystemInfo.deviceUniqueIdentifier`. On Android it depends on the app's signing
+  key, so the same headset can show a different id in apps signed on different machines.
+- `platform` is `quest`, `pico`, `android`, `editor` or `desktop`.
+- `startedAt` (Unix ms) tells apart two sessions on one headset: keep the newest.
+- An Android phone has to hold a Wi-Fi multicast lock to receive broadcasts. Sending one needs
+  nothing. iOS will need either Bonjour or Apple's multicast entitlement; neither exists yet.
+- Venue Wi-Fi that isolates clients blocks this. The phone can still connect by IP.
+
+## Control
+
+TCP, UTF-8, one JSON object per line, `\n`-terminated (a trailing `\r` is ignored). A line over
+16 KiB closes the connection. Requests from the phone are read into an object whose missing
+fields mean "not given" (`index` defaults to -1).
+
+### Phone → headset
+
+| Request | Reference line | Effect |
+|---|---|---|
+| hello | `{"type":"hello","protocol":1,"client":"HexR Tester"}` | Headset replies with its welcome |
+| ping | `{"type":"ping"}` | Nothing; keeps the connection alive. Send every ~5 s |
+| glove | `{"type":"glove","action":"connect","hand":"left"}` | `HexRManager.Connect(Left)` |
+| glove | `{"type":"glove","action":"disconnect","hand":"right"}` | `HexRManager.Disconnect(Right)` |
+| release | `{"type":"release"}` | `ReleaseAllChannels()` on connected gloves; `"hand"` limits it to one |
+| scene | `{"type":"scene","index":2}` | Load build scene 2 (only if the app exposes scenes) |
+| command | `{"type":"command","id":"reset"}` | Run a command the app registered |
+| stream | `{"type":"stream","action":"start"}` | Ask the wearer to share the view; `"stop"` ends sharing |
+
+A request that does nothing (connect on a glove already connecting, disconnect on one already
+off) is not an error. A request that cannot be done gets an error line. The headset drops a
+phone it has not heard from in 15 s.
+
+While the headset is paused (taken off, asleep) every request except hello and ping is refused
+straight away: run later, a scene change or a capture prompt would land in front of whoever puts
+the headset on next. A request that waited more than 5 s for the main thread is refused too.
+
+### Headset → phone
+
+Welcome, in reply to hello:
+
+```json
+{"type":"hello","protocol":1,"id":"q3-1","control":47801,"video":47802}
+```
+
+Error, in reply to a request it could not do:
+
+```json
+{"type":"error","request":"command","message":"This app has no command \"nope\"."}
+```
+
+Status, five times a second while the app runs and once a second while it is paused, so a phone
+can tell a sleeping headset (`"paused":true`) from a vanished one (nothing for 4 s). Reference
+line:
+
+```json
+{"type":"status","protocol":1,"id":"q3-1","name":"Quest 3","model":"Oculus Quest 3","platform":"quest","app":"HexR Demo","appVersion":"1.2","hexrVersion":"0.10.0","paused":false,"headsetBatteryPct":71,"scene":{"index":1,"name":"Hospital Tutorial"},"scenes":[{"index":0,"name":"Basic Tutorial"},{"index":1,"name":"Hospital Tutorial"}],"gloves":[{"hand":"left","state":"connected","message":"Connected","batteryPct":83,"pressureDeciKPa":[10,0,0,0,0,0,452]},{"hand":"right","state":"disconnected","message":"","batteryPct":-1,"pressureDeciKPa":[]}],"stream":{"state":"live","port":47802,"width":1024,"height":1024,"viewers":1,"message":""},"commands":[{"id":"reset","label":"Reset demo"}],"allowGloveControl":true,"allowVideo":true,"exposeScenes":true,"controllers":2}
+```
+
+- `gloves` always has left then right. `state` is `connected`, `connecting`, `disconnected`, or
+  `missing` (the rig has no handler for that hand). `message` is the handler's own status text,
+  e.g. a Bluetooth permission prompt waiting in the headset.
+- `batteryPct` is -1 until the glove has reported its battery.
+- `pressureDeciKPa`: gauge pressure in tenths of a kPa, thumb, index, middle, ring, pinky, palm,
+  then the pump's source tank (the firmware's channel order). Empty unless connected. The raw
+  reading is converted the same way the HexR Tester converts it over Bluetooth
+  (`Protocol.rawToKpa`): above 10000 it is absolute pascals, otherwise already gauge kPa.
+- `scenes` is empty unless `exposeScenes`.
+- `stream.state`: `off`, `requesting` (the prompt is up in the headset), `live`, `denied`,
+  `unsupported` (Editor, desktop, or an app with view sharing off), `error`. `message` says why.
+  `port`, `width` and `height` are meaningful while `live`.
+- `controllers` is how many phones have a control connection.
+
+## Video
+
+Plain TCP to `stream.port`, while `stream.state` is `live`. All integers big-endian.
+
+Once per connection, 9 bytes:
+
+```
+48 58 56 31   04 00   04 00   01
+"HXV1"        width   height  codec (1 = H.264)
+```
+
+Then packets, each a 13-byte header and a payload:
+
+```
+00 00 00 04   02      00 00 00 00 00 00 03 e8   <4 payload bytes>
+length        flags   presentation time (µs)
+```
+
+- `length` counts the payload only.
+- `flags`: bit 0 codec config (SPS/PPS), bit 1 keyframe.
+- The payload is the encoder's Annex-B output, unchanged. Keyframes also carry SPS/PPS.
+- A new viewer gets the cached config packet, then nothing until the next keyframe (the headset
+  asks the encoder for one when a viewer joins). A viewer that falls behind has its backlog
+  dropped and waits for the next keyframe.
+- Several phones can watch at once. Stopping the share closes every video connection.
+
+### On the headset
+
+The view comes from Android's MediaProjection: the wearer accepts a system prompt once per
+session (a phone pressing "Share" again after a stop needs a new acceptance). The capture runs in
+a foreground service of type `mediaProjection`. Defaults: 1024×1024, 4 Mbit/s, 30 fps, Baseline
+profile, a keyframe every second. On Quest, Meta's compositor fills the capture surface itself.
+Sharing ends if another app starts capturing, if the app is closed, or if it stays in the
+background for `stopVideoAfterBackgroundSeconds` (20 s by default).

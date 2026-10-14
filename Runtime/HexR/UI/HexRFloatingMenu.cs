@@ -129,6 +129,8 @@ public class HexRFloatingMenu : MonoBehaviour
     private TextMeshProUGUI leftStatus;
     private TextMeshProUGUI rightStatus;
     private TextMeshProUGUI collidersLabel;
+    private TextMeshProUGUI headerHint;
+    private int shownRemoteState = -1;
     private IHexRPassthrough passthrough;
 
     // The demo groups 0.Full Demo switches between. Scene-specific, so they are re-found on every
@@ -241,6 +243,45 @@ public class HexRFloatingMenu : MonoBehaviour
 
         UpdateHapticsReadout();
         UpdateGloveStatus();
+        UpdateRemoteHint();
+    }
+
+    /// <summary>
+    /// Tells the wearer when a phone is connected through HexR Remote, and above all when one is
+    /// watching their view: they agreed to it at the prompt, but that may have been several people
+    /// ago at an event. Shown where "grab to move" sits, so the panel's layout does not change in
+    /// an app without the remote.
+    /// </summary>
+    private void UpdateRemoteHint()
+    {
+        if (headerHint == null)
+        {
+            return;
+        }
+
+        HexRRemote remote = HexRRemote.Instance;
+        int state = remote == null ? 0 : remote.PhonesWatching > 0 ? 2 : remote.PhonesConnected > 0 ? 1 : 0;
+        if (state == shownRemoteState)
+        {
+            return;
+        }
+
+        shownRemoteState = state;
+        switch (state)
+        {
+            case 2:
+                headerHint.text = "phone watching";
+                headerHint.color = HexRMenuLook.Accent;
+                break;
+            case 1:
+                headerHint.text = "phone connected";
+                headerHint.color = HexRMenuLook.Muted;
+                break;
+            default:
+                headerHint.text = "grab to move";
+                headerHint.color = HexRMenuLook.Faint;
+                break;
+        }
     }
 
     private void OnDestroy()
@@ -726,6 +767,8 @@ public class HexRFloatingMenu : MonoBehaviour
         TextMeshProUGUI hint = NewLabel("Hint", header.rectTransform, "grab to move", 11f,
             FontStyles.Normal, HexRMenuLook.Faint, TextAlignmentOptions.Right, HexRMenuLook.Body);
         Stretch(hint.rectTransform, k_Margin, 0f);
+        headerHint = hint;
+        shownRemoteState = -1;
 
         Image rule = NewImage("Header Rule", panel, HexRMenuLook.Line);
         Place(rule.rectTransform, k_Margin, y - k_HeaderHeight + 1f, k_PanelWidthPx - k_Margin * 2f, 1.5f);
@@ -965,7 +1008,7 @@ public class HexRFloatingMenu : MonoBehaviour
             float x, cellY, width;
             GridCell(i, y, out x, out cellY, out width);
 
-            Button button = NewButtonAt(SceneDisplayName(index), x, cellY, width,
+            Button button = NewButtonAt(HexRSceneNames.DisplayName(index), x, cellY, width,
                 k_GridButtonHeight, index == current, 12f, () => LoadSceneAt(index), out _);
 
             // The scene you are already in is not somewhere to go.
@@ -975,57 +1018,6 @@ public class HexRFloatingMenu : MonoBehaviour
         }
 
         return y - GridHeight(count) - k_Gap;
-    }
-
-    /// <summary>
-    /// "Assets/Scenes/2.Hospital Tutorial.unity" reads as "2.Hospital Tutorial", and a file name
-    /// written in one word reads as words: "LivingHeart" as "Living Heart", "FindTheLump" as
-    /// "Find the Lump".
-    /// </summary>
-    private static string SceneDisplayName(int buildIndex)
-    {
-        string path = SceneUtility.GetScenePathByBuildIndex(buildIndex);
-        if (string.IsNullOrEmpty(path))
-        {
-            return "Scene " + buildIndex;
-        }
-
-        int slash = path.LastIndexOf('/');
-        int dot = path.LastIndexOf('.');
-        int start = slash + 1;
-        int length = (dot > start ? dot : path.Length) - start;
-        return Words(path.Substring(start, length));
-    }
-
-    private static string Words(string name)
-    {
-        if (string.IsNullOrEmpty(name) || name.IndexOf(' ') >= 0)
-        {
-            return name;
-        }
-
-        System.Text.StringBuilder spaced = new System.Text.StringBuilder(name.Length + 4);
-        for (int i = 0; i < name.Length; i++)
-        {
-            if (i > 0 && char.IsUpper(name[i]) && char.IsLower(name[i - 1]))
-            {
-                spaced.Append(' ');
-            }
-
-            spaced.Append(name[i]);
-        }
-
-        string[] words = spaced.ToString().Split(' ');
-        for (int i = 1; i < words.Length; i++)
-        {
-            string w = words[i];
-            if (w == "The" || w == "A" || w == "Of" || w == "And")
-            {
-                words[i] = w.ToLowerInvariant();
-            }
-        }
-
-        return string.Join(" ", words);
     }
 
     private void LoadSceneAt(int buildIndex)

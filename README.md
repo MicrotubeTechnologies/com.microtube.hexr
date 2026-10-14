@@ -99,7 +99,8 @@ that keeps its own `HaptGlove.dll` will collide with `HaptGlove.Runtime`.
   `HexRTrackedHand` (which tracked hand each HexR hand is, and where its joints are),
   `HapticFingerTrigger`, `HexRGrabbable`, `HexRUsable`,
   `FingerUseTracking`, `PressureTrackerMain`, `ProximityCheck`, `SpecialHaptics`,
-  `HaptGloveCollidersVisualizer`, and the floating menu under `UI/`.
+  `HaptGloveCollidersVisualizer`, the floating menu under `UI/`, and HexR Remote under
+  `Remote/` (see "HexR Remote: a phone for events" below).
 - `Runtime/MetaOVR/` (assembly `HexR.Runtime.MetaOVR`) — the only code that touches
   `Oculus.Interaction`. Excluded from the build entirely when the Meta SDK isn't installed.
   See "How the Meta OVR support stays optional" below.
@@ -137,6 +138,8 @@ compiles and connects without the consuming project having to source any of it:
 | `BleWinrtDll.dll` | Native WinRT BLE, P/Invoked directly for the Windows/Editor path. Built from adabru/BleWinrtDll (MIT) — the embedded PDB path still reads `C:\Users\ABrun\Documents\BleWinrtDll`. Needs attribution, nothing more. |
 | `BluetoothUnityAPI.bundle` | Native macOS BLE. Carries the build machine's Xcode `DerivedData` paths (`/Users/tony/…`), and `Contents/_CodeSignature/CodeResources` contains the author's personal email. Both are upstream artifacts — stripping them would invalidate the bundle's code signature, so they stay. |
 | `Android/hexrbluetooth.androidlib/` | Library-project manifest carrying the Bluetooth/location permissions and the BLE helper activity, merged into the consuming app's manifest at build time. |
+| `Android/HexRRemote/*.java` | HexR Remote's screen capture: Android MediaProjection into an H.264 encoder, served to phones over TCP. Our own source, compiled into the app by Unity's Gradle build. Framework APIs only (no androidx), because half the HexR apps start on `UnityPlayerActivity` and have none on their classpath. |
+| `Android/hexrremote.androidlib/` | HexR Remote's manifest entries: network and foreground-service permissions, the capture prompt's helper activity, and the `mediaProjection` service. Merged into every app that installs the package; nothing starts them without a `HexRRemote` in a scene. |
 
 The native plugins above are auto-referenced (`isExplicitlyReferenced: 0`), so no asmdef has
 to list them. `HaptGlove.Runtime` is different — it is an asmdef, so `HexR.Runtime` and
@@ -310,6 +313,44 @@ channel when the app quits (stopping Play mode in the Editor included), when it 
 `HaptGloveHandler.ReleaseAllChannels()` does the same on demand. What no code on the headset
 can cover is the Bluetooth link dropping on its own; then the glove holds its last pressure
 until the arm module is switched off.
+
+## HexR Remote: a phone for events
+
+`HexRRemote` lets a phone on the same Wi-Fi find the headset, connect and disconnect its gloves,
+watch their state and pressures, switch scenes, run buttons the app adds, and see what the
+wearer sees. The phone side is the **Headsets** tab in the HexR Tester app. It is for running
+demos: the facilitator stands beside the person in the headset instead of taking it off them to
+press Connect.
+
+Add it with **HexR > Add HexR Remote**, which puts it under the rig. It is opt-in and in neither
+rig prefab: it opens network ports, and a project should not gain those by updating the package.
+On the component, `allowGloveControl` and `allowVideo` are on and `exposeScenes` is off by
+default (like the floating menu's scene switcher). Give the phone a button of your own with
+`HexRRemote.RegisterCommand("reset", "Reset demo", ResetDemo)`; it runs on the main thread.
+
+Every phone request goes through the API above (`HexRManager.Connect`, `Disconnect`,
+`ReleaseAllChannels`), on the main thread, exactly as the floating menu's buttons would. While
+the headset is off someone's head (the app is paused) requests are refused rather than queued,
+so nothing happens in front of whoever puts it on next.
+
+Sharing the view uses Android's MediaProjection, which Meta allows on Quest for casting and
+streaming. The wearer accepts a system prompt each time sharing starts; the floating menu's
+header then reads "phone watching" for as long as a phone is. Sharing stops when the phone
+stops it, when another app starts a capture, when the app closes, or when it stays in the
+background for `stopVideoAfterBackgroundSeconds`. In the Editor and on desktop the status says
+sharing is unsupported; everything else works there, which is how to test an app's remote
+without a headset. Not yet tried on PICO.
+
+The wire protocol is `Documentation~/RemoteProtocol.md`. `Tools~/hexr_remote_probe.py` speaks
+it from a computer (`python hexr_remote_probe.py discover`), which tells "the headset is not
+announcing" apart from "the phone is not listening".
+
+At events: bring a dedicated router. Venue and hotel Wi-Fi usually stops devices seeing each
+other, which hides headsets from the phone (it can still connect by IP). There is no access
+control: anyone on the same Wi-Fi with the Tester can control a headset with HexR Remote, and
+watch it once the wearer has agreed. Headset ids come from Android and depend on the app's
+signing key, so sign your apps with one shared keystore if phones should recognise a headset
+across apps.
 
 ## Getting started in a new project
 
