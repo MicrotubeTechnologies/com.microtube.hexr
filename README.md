@@ -100,7 +100,7 @@ that keeps its own `HaptGlove.dll` will collide with `HaptGlove.Runtime`.
   `HapticFingerTrigger`, `HexRGrabbable`, `HexRUsable`,
   `FingerUseTracking`, `PressureTrackerMain`, `ProximityCheck`, `SpecialHaptics`,
   `HaptGloveCollidersVisualizer`, the floating menu under `UI/`, and HexR Remote under
-  `Remote/` (see "HexR Remote: a phone for events" below).
+  `Remote/` (see "HexR Remote: phones and computers that run the event" below).
 - `Runtime/MetaOVR/` (assembly `HexR.Runtime.MetaOVR`) — the only code that touches
   `Oculus.Interaction`. Excluded from the build entirely when the Meta SDK isn't installed.
   See "How the Meta OVR support stays optional" below.
@@ -314,43 +314,128 @@ channel when the app quits (stopping Play mode in the Editor included), when it 
 can cover is the Bluetooth link dropping on its own; then the glove holds its last pressure
 until the arm module is switched off.
 
-## HexR Remote: a phone for events
+## HexR Remote: phones and computers that run the event
 
-`HexRRemote` lets a phone on the same Wi-Fi find the headset, connect and disconnect its gloves,
-watch their state and pressures, switch scenes, run buttons the app adds, and see what the
-wearer sees. The phone side is the **Headsets** tab in the HexR Tester app. It is for running
-demos: the facilitator stands beside the person in the headset instead of taking it off them to
-press Connect.
+`HexRRemote` lets a phone or computer on the same Wi-Fi look after the headset without anyone
+taking it off: connect and disconnect its gloves, watch their state and pressure, switch scenes,
+press buttons your app adds, and show an audience what the wearer sees. It is for running demos
+and events: the facilitator stands beside the person in the headset instead of taking it off
+them to press Connect.
 
-Add it with **HexR > Add HexR Remote**, which puts it under the rig. It is opt-in and in neither
-rig prefab: it opens network ports, and a project should not gain those by updating the package.
-On the component, `allowGloveControl` and `allowVideo` are on and `exposeScenes` is off by
-default (like the floating menu's scene switcher). Give the phone a button of your own with
-`HexRRemote.RegisterCommand("reset", "Reset demo", ResetDemo)`; it runs on the main thread.
+The controller is the HexR Tester:
 
-Every phone request goes through the API above (`HexRManager.Connect`, `Disconnect`,
-`ReleaseAllChannels`), on the main thread, exactly as the floating menu's buttons would. While
-the headset is off someone's head (the app is paused) requests are refused rather than queued,
-so nothing happens in front of whoever puts it on next.
+| HexR Tester | What it can do |
+|---|---|
+| Android, **Headsets** tab (1.1.0 and later) | Everything, including the wearer's view full screen |
+| Windows, **Headsets** screen (0.3.0 and later) | Everything, including the wearer's view full screen |
+| Mac | Not yet: the Mac build is still 0.2, and a Mac build of 0.3 would control headsets but not show the view |
 
-Sharing the view uses Android's MediaProjection, which Meta allows on Quest for casting and
-streaming. The wearer accepts a system prompt each time sharing starts; the floating menu's
-header then reads "phone watching" for as long as a phone is. Sharing stops when the phone
-stops it, when another app starts a capture, when the app closes, or when it stays in the
-background for `stopVideoAfterBackgroundSeconds`. In the Editor and on desktop the status says
-sharing is unsupported; everything else works there, which is how to test an app's remote
-without a headset. Not yet tried on PICO.
+### Add it to your app
 
-The wire protocol is `Documentation~/RemoteProtocol.md`. `Tools~/hexr_remote_probe.py` speaks
-it from a computer (`python hexr_remote_probe.py discover`), which tells "the headset is not
-announcing" apart from "the phone is not listening".
+1. **Use HexR 0.10.0 or newer.** In `Packages/manifest.json`:
 
-At events: bring a dedicated router. Venue and hotel Wi-Fi usually stops devices seeing each
-other, which hides headsets from the phone (it can still connect by IP). There is no access
-control: anyone on the same Wi-Fi with the Tester can control a headset with HexR Remote, and
-watch it once the wearer has agreed. Headset ids come from Android and depend on the app's
-signing key, so sign your apps with one shared keystore if phones should recognise a headset
-across apps.
+   ```json
+   "com.microtube.hexr": "https://github.com/MicrotubeTechnologies/com.microtube.hexr.git#v0.10.0"
+   ```
+
+   (or a later tag).
+2. **Open the first scene your app loads and choose HexR > Add HexR Remote.** It goes under the
+   HexR rig and travels with it across scene loads, so one is enough; a copy in a later scene
+   removes itself. It is opt-in and in neither rig prefab on purpose: it opens network ports, and
+   a project should not gain those by updating the package.
+3. **Decide what a phone may do**, on the component (see [Settings](#settings-on-the-component)).
+   To let the phone switch scenes, tick **Expose Scenes** and make sure the scenes are in
+   **File > Build Profiles** (Build Settings); the phone lists them by name.
+4. **Optionally, give the phone buttons of your own** (see [Your own buttons](#your-own-buttons-on-the-phone)).
+5. **Build for Android as usual.** The permissions HexR Remote needs are merged into your manifest
+   for you.
+6. **Check it.** Put the headset and the HexR Tester on the same Wi-Fi, open your app in the
+   headset and the Tester's Headsets tab. The headset appears within a few seconds. Someone has
+   to be wearing it before it takes requests.
+
+### Settings on the component
+
+| Setting | Default | What it does |
+|---|---|---|
+| Allow Glove Control | on | Connect, disconnect and release the gloves from the phone |
+| Allow Video | on | Let the phone ask to share the view. The wearer still accepts it in the headset each time. |
+| Expose Scenes | off | Show the phone your build scenes and let it switch between them (off, like the floating menu's scene switcher) |
+| Video Width, Height | 1024 × 1024 | Encoded size. Quest's view is square, so a square size wastes nothing. |
+| Video Bitrate Kbps | 4000 | |
+| Video Fps | 30 | |
+| Stop Video After Background Seconds | 20 | End the share if the app stays in the background this long, so it never captures another app or the home screen |
+| Discovery, Control, Video Port | 47800, 47801, 47802 | If the control or video port is taken, the next free one is used and announced |
+| Status Per Second | 5 | How often phones hear the headset's state |
+
+### Your own buttons on the phone
+
+```csharp
+using HexR;
+using UnityEngine;
+
+public class DemoCommands : MonoBehaviour
+{
+    void OnEnable()  => HexRRemote.RegisterCommand("reset", "Reset demo", ResetDemo);
+    void OnDisable() => HexRRemote.UnregisterCommand("reset");
+
+    void ResetDemo() { /* runs on the main thread */ }
+}
+```
+
+Each command shows as a button on the phone. Registering the same id again replaces it, and it is
+safe to call before the HexR Remote exists.
+
+### How it behaves
+
+- **Every phone request goes through the API your own code uses** (`HexRManager.Connect`,
+  `Disconnect`, `ReleaseAllChannels`), on the main thread, exactly as the floating menu's buttons
+  would.
+- **While nobody is wearing the headset** (the app is paused) requests are refused rather than
+  queued, so nothing happens in front of whoever puts it on next. The Tester shows it as asleep.
+- **Sharing the view** uses Android's MediaProjection, which Meta allows on Quest for casting and
+  streaming. The wearer accepts a system prompt each time sharing starts, and the floating menu's
+  header reads "phone watching" while anyone is. Sharing stops when the phone stops it, when
+  another app starts a capture, when the app closes, or when it stays in the background for
+  `stopVideoAfterBackgroundSeconds`.
+- **Telling headsets apart.** Headsets of one model report the same name ("Quest 3"), so name
+  each one in the Tester ("Station 1"); the name is kept on that phone or computer. The id a
+  headset reports comes from Android and depends on the app's signing key, so sign your apps with
+  one shared keystore if the Tester should recognise a headset across apps. Two apps signed with
+  the same key on one headset report the same id, and the Tester follows whichever started last.
+
+### Store submissions
+
+The package adds these to every app that installs it, with or without a HexR Remote in a scene:
+`INTERNET`, `ACCESS_NETWORK_STATE`, `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_MEDIA_PROJECTION`,
+an invisible activity that hosts the capture prompt, and a foreground service of type
+`mediaProjection`. Android grants all four permissions at install without asking, and nothing
+starts unless a `HexRRemote` is in a scene.
+
+A store review may ask about the media-projection foreground service (Google Play asks apps
+targeting Android 14 or later to declare each foreground service type they use). The honest
+answer: it casts the headset view to a facilitator's phone or computer on the local network,
+only after the wearer accepts Android's prompt, each time. A minified build keeps the classes
+HexR Remote needs; `HexRRemoteBuildProcessor` adds the R8 keep rule.
+
+### Testing without a headset
+
+In the Editor everything works except sharing the view, which reports itself unsupported: enter
+Play mode with a HexR Remote in the scene and the Tester on the same network finds the Editor.
+`Tools~/hexr_remote_probe.py` speaks the protocol from a computer
+(`python hexr_remote_probe.py discover`), which tells "the headset is not announcing" apart from
+"the Tester is not listening". The wire protocol is `Documentation~/RemoteProtocol.md`.
+
+### At events
+
+- **Bring a dedicated router.** Venue and hotel Wi-Fi usually stops devices seeing each other,
+  which hides headsets from the Tester. It can still add one by its IP address.
+- **There is no access control.** Anyone on the same Wi-Fi with the Tester can control a headset
+  with HexR Remote, and watch it once the wearer has agreed.
+- **On Windows**, allow HEXR Window Tester on private networks the first time Windows asks, and
+  set the Wi-Fi to Private; otherwise headsets do not appear (adding one by IP still works).
+- **A glove talks to one device at a time.** If the Tester's own phone or computer holds a glove
+  on its Test tab, the headset cannot connect it until it is disconnected there.
+- **PICO** has not been tried yet.
 
 ## Getting started in a new project
 
