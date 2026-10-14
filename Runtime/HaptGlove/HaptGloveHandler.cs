@@ -610,13 +610,27 @@ namespace HaptGlove
             // that searchForDevice() can match neither name nor address, devicePaired never
             // goes true, and the Connect() at the end of the scan throws
             // BlueToothNotReadyException. Guard on emptiness, not null.
-            if (!string.IsNullOrEmpty(targetDeviceAddress))
+            //
+            // Both setters search the plugin's device cache once they have stored the target,
+            // and a nameless device there makes a name search throw (see PluginDeviceCache).
+            // Uncaught, that ended this method before the watchdog below was armed, and the
+            // glove sat on "Searching..." until the app restarted. The target is already stored
+            // when it throws, so carry on and let the attempt resolve the glove as usual.
+            PluginDeviceCache.DropNamelessDevices();
+            try
             {
-                btHelper.setDeviceAddress(targetDeviceAddress);
+                if (!string.IsNullOrEmpty(targetDeviceAddress))
+                {
+                    btHelper.setDeviceAddress(targetDeviceAddress);
+                }
+                else
+                {
+                    btHelper.setDeviceName(targetDeviceName);
+                }
             }
-            else
+            catch (Exception e)
             {
-                btHelper.setDeviceName(targetDeviceName);
+                Debug.Log("Setting the glove target threw after storing it, carrying on: " + e.Message);
             }
             BleLog("BTConnection: name=\"" + targetDeviceName + "\" address=\""
                 + targetDeviceAddress + "\" remembered=\"" + rememberedDeviceId
@@ -841,16 +855,33 @@ namespace HaptGlove
                 onDeviceFound?.Invoke(device.DeviceAddress, device.DeviceName);
             }
 
-            BleLog("isDevicePaired=" + helper.isDevicePaired() + " bleConnected=" + bleConnected);
+            // One guarded lookup. The scan has just refilled the plugin's cache, and a nameless
+            // device in it makes isDevicePaired() throw (see PluginDeviceCache). Uncaught, that
+            // ended this handler and the attempt waited out the watchdog, then failed the same
+            // way on every retry. Unresolved goes down the connect-anyway path below, whose
+            // failure is reported and retried.
+            PluginDeviceCache.DropNamelessDevices();
+            bool paired;
+            try
+            {
+                paired = helper.isDevicePaired();
+            }
+            catch (Exception e)
+            {
+                Debug.Log("isDevicePaired threw after the scan, treating as unresolved: " + e.Message);
+                paired = false;
+            }
 
-            if (helper.isDevicePaired() & !bleConnected)
+            BleLog("isDevicePaired=" + paired + " bleConnected=" + bleConnected);
+
+            if (paired && !bleConnected)
             {
                 btText = "Device start to connect.";
                 PluginConnect(OnConnectThrew);
 
                 //StartCoroutine(CheckReConnect(1, helper));
             }
-            else if (!helper.isDevicePaired())
+            else if (!paired)
             {
                 // isDevicePaired() reflects Android OS-level bonding, which this glove
                 // doesn't need to already have to accept a GATT connection -- bonding (if
@@ -861,7 +892,7 @@ namespace HaptGlove
                 btText = "Device not paired, connecting anyway.";
                 PluginConnect(OnConnectThrew);
             }
-            else if (helper.isDevicePaired() & bleConnected)
+            else
             {
                 btText = targetDeviceName + " connected.";
             }
@@ -1072,16 +1103,19 @@ namespace HaptGlove
                 isSubscribed = false;
                 linkSupervision = null;
 
+                // Reopen a connect campaign so the backoff retry takes over. The remembered
+                // address means the first attempt skips the scan entirely. Reopened before the
+                // event is raised, so a listener can tell this drop (IsConnecting is true) from
+                // a disconnect that was asked for (it is false) and word its status to match.
+                connectRequested = true;
+                retryAttempt = 0;
+
                 btText = targetDeviceName + " disconnected. Reconnecting...";
                 if (onBluetoothDisconnected != null)
                 {
                     onBluetoothDisconnected(whichHand);
                 }
 
-                // Reopen a connect campaign so the backoff retry takes over. The remembered
-                // address means the first attempt skips the scan entirely.
-                connectRequested = true;
-                retryAttempt = 0;
                 ScheduleRetry();
                 yield break;
             }
@@ -1099,10 +1133,13 @@ namespace HaptGlove
         {
             yield return new WaitForSeconds(AttemptTimeoutSeconds);
 
-            // Still the same attempt (no OnScanEnded/OnConnected/OnConnectionFailed ever
-            // advanced connectGeneration by starting a new one) and still not connected --
-            // the plugin has gone silent on this attempt with no callback forthcoming.
-            if (generation == connectGeneration && !bleConnected)
+            // Still the same attempt (nothing started a new one, which advances
+            // connectGeneration), still being asked for, and still not connected -- the plugin
+            // has gone silent on this attempt with no callback forthcoming. connectRequested
+            // matters: OnConnected does not advance the generation, so a glove that connected
+            // and was then disconnected inside the timeout used to have this report its
+            // finished, successful attempt as "timed out".
+            if (generation == connectGeneration && connectRequested && !bleConnected)
             {
                 Debug.Log("Connect attempt timed out with no plugin callback -- retrying.");
                 btText = "Connection attempt timed out.";

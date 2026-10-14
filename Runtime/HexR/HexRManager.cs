@@ -423,7 +423,22 @@ namespace HexR
             HaptGloveHandler handler = HandlerFor(hand);
             if (handler != null)
             {
-                handler.BTConnection();
+                try
+                {
+                    handler.BTConnection();
+                }
+                catch (Exception e)
+                {
+                    // A throw here ends the attempt before anything that would report back was
+                    // started, so free the slot instead of leaving the glove on "Searching..."
+                    // until the app restarts. The Bluetooth plugin's name lookup did exactly
+                    // this on the second connect of a session (see PluginDeviceCache).
+                    Debug.LogError("[HexR] Connecting the " + hand + " glove failed: " + e);
+                    SetHandText(hand, (hand == HaptGloveHandler.HandType.Left ? "Left" : "Right")
+                        + " connect failed — try again");
+                    EndConnect(hand);
+                    ConnectAttemptEnded?.Invoke(hand);
+                }
             }
             else
             {
@@ -730,21 +745,22 @@ namespace HexR
         {
             EndConnect(hand);
 
+            // The same event reports a drop, which the handler is already reconnecting, and a
+            // disconnect someone asked for, which nothing will undo. Saying "reconnecting" for
+            // the second read as though the glove would come back by itself, so the wearer
+            // waited, then had to press again anyway.
+            HaptGloveHandler handler = HandlerFor(hand);
+            bool reconnecting = handler != null && handler.IsConnecting;
+            string side = hand == HaptGloveHandler.HandType.Left ? "Left" : "Right";
+            SetHandText(hand, side + (reconnecting ? " disconnected — reconnecting…" : " disconnected"));
+
             if (hand == HaptGloveHandler.HandType.Left)
             {
                 BluetoothIndicatorL?.SetActive(false);
-                if(LeftBtText!=null)
-                {
-                    LeftBtText.text = "Left disconnected — reconnecting…";
-                }
             }
             else if (hand == HaptGloveHandler.HandType.Right)
             {
                 BluetoothIndicatorR?.SetActive(false);
-                if (RightBtText != null)
-                {
-                    RightBtText.text = "Right disconnected — reconnecting…";
-                }
             }
             StopBatteryPolling(hand);
             HexRPanel?.SetActive(true);
