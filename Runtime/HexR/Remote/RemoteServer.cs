@@ -37,6 +37,7 @@ namespace HexR
         private volatile bool running;
         private volatile string welcomeLine = "";
         private volatile string statusLine = "";
+        private volatile string[] hapticsSnapshot = new string[0];
 
         /// <summary>
         /// Set while the app is paused (headset off or asleep). Update does not run then, so a
@@ -114,6 +115,24 @@ namespace HexR
             }
         }
 
+        /// <summary>
+        /// Main thread: a line every phone must get, in order. Unlike the status, where only the
+        /// newest matters, a haptics change skipped would leave a phone showing the wrong touch.
+        /// </summary>
+        public void PublishEvent(string line)
+        {
+            foreach (RemoteClient client in Snapshot())
+            {
+                client.Send(line);
+            }
+        }
+
+        /// <summary>Main thread: the haptics a phone is sent right after its welcome, so it starts in step.</summary>
+        public void SetHapticsSnapshot(string[] lines)
+        {
+            hapticsSnapshot = lines ?? new string[0];
+        }
+
         public bool TryTake(out RemoteInbound item)
         {
             return inbox.TryDequeue(out item);
@@ -160,6 +179,11 @@ namespace HexR
 
                 case RemoteProtocol.Hello:
                     client.Send(welcomeLine);
+                    foreach (string hapticsLine in hapticsSnapshot)
+                    {
+                        client.Send(hapticsLine);
+                    }
+
                     return;
             }
 

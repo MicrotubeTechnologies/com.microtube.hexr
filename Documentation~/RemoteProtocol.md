@@ -89,7 +89,7 @@ can tell a sleeping headset (`"paused":true`) from a vanished one (nothing for 4
 line:
 
 ```json
-{"type":"status","protocol":1,"id":"q3-1","name":"Quest 3","model":"Oculus Quest 3","platform":"quest","app":"HexR Demo","appVersion":"1.2","hexrVersion":"0.10.0","paused":false,"headsetBatteryPct":71,"scene":{"index":1,"name":"Hospital Tutorial"},"scenes":[{"index":0,"name":"Basic Tutorial"},{"index":1,"name":"Hospital Tutorial"}],"gloves":[{"hand":"left","state":"connected","message":"Connected","batteryPct":83,"pressureDeciKPa":[10,0,0,0,0,0,452]},{"hand":"right","state":"disconnected","message":"","batteryPct":-1,"pressureDeciKPa":[]}],"stream":{"state":"live","port":47802,"width":1024,"height":1024,"viewers":1,"message":""},"commands":[{"id":"reset","label":"Reset demo"}],"allowGloveControl":true,"allowVideo":true,"exposeScenes":true,"controllers":2}
+{"type":"status","protocol":1,"id":"q3-1","name":"Quest 3","model":"Oculus Quest 3","platform":"quest","app":"HexR Demo","appVersion":"1.2","hexrVersion":"0.10.0","paused":false,"headsetBatteryPct":71,"scene":{"index":1,"name":"Hospital Tutorial"},"scenes":[{"index":0,"name":"Basic Tutorial"},{"index":1,"name":"Hospital Tutorial"}],"gloves":[{"hand":"left","state":"connected","message":"Connected","batteryPct":83,"pressureDeciKPa":[10,0,0,0,0,0,452]},{"hand":"right","state":"disconnected","message":"","batteryPct":-1,"pressureDeciKPa":[]}],"stream":{"state":"live","port":47802,"width":1024,"height":1024,"viewers":1,"message":""},"commands":[{"id":"reset","label":"Reset demo"}],"allowGloveControl":true,"allowVideo":true,"exposeScenes":true,"controllers":2,"haptics":true,"clockUs":1791966541289123}
 ```
 
 - `gloves` always has left then right. `state` is `connected`, `connecting`, `disconnected`, or
@@ -105,6 +105,33 @@ line:
   `unsupported` (Editor, desktop, or an app with view sharing off), `error`. `message` says why.
   `port`, `width` and `height` are meaningful while `live`.
 - `controllers` is how many phones have a control connection.
+- `haptics` says the headset sends the haptics lines below. Headsets before it do not send the
+  field, and a phone reads it missing as false.
+- `clockUs` is the headset's clock when the status was made, in microseconds: the clock haptics
+  lines and the video are stamped with (see Haptics).
+
+Haptics, whenever a glove's haptics change, and once for each hand right after the welcome so a
+phone starts in step. Only the channels that changed are listed, except in that first one, which
+has all six. Reference line, the right index fingertip starting to press at 80%:
+
+```json
+{"type":"haptics","t":1791966541289123,"hand":"right","channels":[{"finger":1,"mode":"pressure","intensityPct":80,"frequencyDeciHz":0,"tap":false}]}
+```
+
+- These are the commands the app sent, not what the glove measured (that is the status's
+  `pressureDeciKPa`). They come from `Haptics.GetChannelState`, read once a frame after every
+  script's Update, so a command from any script is included.
+- `finger`: 0 thumb, 1 index, 2 middle, 3 ring, 4 pinky, 5 palm, as `Haptics.Finger`.
+- `mode`: `off`, `pressure` (press and hold), `vibration` or `pulse`.
+- `intensityPct`: the command's intensity, 10-100 while on (0.1-1 in the API). `frequencyDeciHz`:
+  vibration and pulse frequency in tenths of a hertz; 0 for pressure.
+- `tap`: the channel was switched on and off within one frame. The line carries what it was
+  switched on to, and a viewer shows it briefly rather than leaving it on.
+- `t` is microseconds on the headset's `CLOCK_MONOTONIC` (Java's `System.nanoTime() / 1000`) on
+  Android, the clock the captured frames are stamped with, so a viewer can draw each touch on the
+  frame that shows it: the touch at `t` belongs on the frame whose presentation time is `t`. A viewer
+  that finds the video's times far from `clockUs` (a capture stamped some other way) should line the
+  two up by when they arrive instead. In the Editor and on desktop it is any steady clock.
 
 ## Video
 

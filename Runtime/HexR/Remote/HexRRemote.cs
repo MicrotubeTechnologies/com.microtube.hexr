@@ -24,7 +24,7 @@ namespace HexR
     public class HexRRemote : MonoBehaviour
     {
         /// <summary>The package version this file shipped in, reported to phones. A test keeps it equal to package.json.</summary>
-        public const string HexRVersion = "0.10.1";
+        public const string HexRVersion = "0.10.2";
 
         public static HexRRemote Instance { get; private set; }
 
@@ -86,6 +86,10 @@ namespace HexR
         private RemoteDiscovery discovery;
         private IRemoteStream stream;
         private RemoteCommands handler;
+        private readonly RemoteHaptics haptics = new RemoteHaptics();
+        private readonly List<string> hapticLines = new List<string>();
+        private HexRManager foundRig;
+        private float nextRigLookup;
         private RemoteStreamStatus lastStream = new RemoteStreamStatus();
         private RemoteAnnounce announce;
         private RemoteSceneInfo[] scenes = new RemoteSceneInfo[0];
@@ -285,6 +289,7 @@ namespace HexR
                 startedAt = startedAt,
             };
             UpdateAnnounce(videoPort);
+            server.SetHapticsSnapshot(haptics.Snapshot());
 
 #if UNITY_EDITOR
             AssemblyReloadEvents.beforeAssemblyReload += Shutdown;
@@ -346,6 +351,52 @@ namespace HexR
             }
         }
 
+        /// <summary>
+        /// After every script's Update, so a haptic command sent this frame goes out this frame,
+        /// stamped with the time the frame showing it was made.
+        /// </summary>
+        private void LateUpdate()
+        {
+            if (server == null)
+            {
+                return;
+            }
+
+            hapticLines.Clear();
+            haptics.Poll(RigForHaptics(), hapticLines);
+            if (hapticLines.Count == 0)
+            {
+                return;
+            }
+
+            foreach (string line in hapticLines)
+            {
+                server.PublishEvent(line);
+            }
+
+            server.SetHapticsSnapshot(haptics.Snapshot());
+        }
+
+        /// <summary>
+        /// ResolveManager, but at most one search a second while there is no manager: this runs
+        /// every frame, and a scene without a rig would otherwise search the whole scene each time.
+        /// </summary>
+        private HexRManager RigForHaptics()
+        {
+            if (HexRManager.Instance != null)
+            {
+                return HexRManager.Instance;
+            }
+
+            if (foundRig == null && Time.unscaledTime >= nextRigLookup)
+            {
+                nextRigLookup = Time.unscaledTime + 1f;
+                foundRig = ResolveManager();
+            }
+
+            return foundRig;
+        }
+
         private void PublishStatus()
         {
             if (server == null)
@@ -390,6 +441,8 @@ namespace HexR
                 allowVideo = allowVideo,
                 exposeScenes = exposeScenes,
                 controllers = server.ClientCount,
+                haptics = true,
+                clockUs = RemoteClock.NowUs(),
             };
 
             server.PublishStatus(RemoteProtocol.ToLine(status));

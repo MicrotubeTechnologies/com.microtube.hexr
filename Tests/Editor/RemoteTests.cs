@@ -38,7 +38,13 @@ namespace HexR.Tests
             "{\"hand\":\"right\",\"state\":\"disconnected\",\"message\":\"\",\"batteryPct\":-1,\"pressureDeciKPa\":[]}]," +
             "\"stream\":{\"state\":\"live\",\"port\":47802,\"width\":1024,\"height\":1024,\"viewers\":1,\"message\":\"\"}," +
             "\"commands\":[{\"id\":\"reset\",\"label\":\"Reset demo\"}]," +
-            "\"allowGloveControl\":true,\"allowVideo\":true,\"exposeScenes\":true,\"controllers\":2}";
+            "\"allowGloveControl\":true,\"allowVideo\":true,\"exposeScenes\":true,\"controllers\":2," +
+            "\"haptics\":true,\"clockUs\":1791966541289123}";
+
+        // A haptics line: the right index fingertip starting to press at 80% (HexR Companion parses it).
+        private const string ReferenceHapticsLine =
+            "{\"type\":\"haptics\",\"t\":1791966541289123,\"hand\":\"right\",\"channels\":[" +
+            "{\"finger\":1,\"mode\":\"pressure\",\"intensityPct\":80,\"frequencyDeciHz\":0,\"tap\":false}]}";
 
         private TestRig rig;
         private FakeStream stream;
@@ -315,7 +321,94 @@ namespace HexR.Tests
                 allowVideo = true,
                 exposeScenes = true,
                 controllers = 2,
+                haptics = true,
+                clockUs = 1791966541289123,
             };
+        }
+
+        // ---- haptics -----------------------------------------------------------------------------
+
+        [Test]
+        public void Haptics_MatchesTheReferenceLine_ThePhoneIsTestedAgainst()
+        {
+            RemoteHapticsMessage message = new RemoteHapticsMessage
+            {
+                t = 1791966541289123,
+                hand = "right",
+                channels = new[] { new RemoteHapticChannel { finger = 1, mode = "pressure", intensityPct = 80 } },
+            };
+            Assert.AreEqual(ReferenceHapticsLine, RemoteProtocol.ToLine(message));
+        }
+
+        [Test]
+        public void HapticsFeed_SendsAPress_ThenItsRelease_StampedWithTheClock()
+        {
+            long now = 1000;
+            RemoteHaptics feed = new RemoteHaptics(() => now);
+            var lines = new System.Collections.Generic.List<string>();
+            feed.Poll(rig.Manager, lines);
+            Assert.IsEmpty(lines, "nothing is on yet, so nothing is sent");
+
+            rig.Right.haptics.HEXRPressure(Haptics.Finger.Index, true, 0.8f, 1f);
+            now = 2000;
+            feed.Poll(rig.Manager, lines);
+            Assert.AreEqual(1, lines.Count);
+            RemoteHapticsMessage on = JsonUtility.FromJson<RemoteHapticsMessage>(lines[0]);
+            Assert.AreEqual((2000L, "right", 1), (on.t, on.hand, on.channels.Length));
+            Assert.AreEqual((1, "pressure", 80, false), (on.channels[0].finger, on.channels[0].mode, on.channels[0].intensityPct, on.channels[0].tap));
+
+            lines.Clear();
+            feed.Poll(rig.Manager, lines);
+            Assert.IsEmpty(lines, "held, so nothing new");
+
+            rig.Right.haptics.HEXRPressure(Haptics.Finger.Index, false, 0.8f, 1f);
+            feed.Poll(rig.Manager, lines);
+            RemoteHapticsMessage off = JsonUtility.FromJson<RemoteHapticsMessage>(lines[0]);
+            Assert.AreEqual((1, "off"), (off.channels[0].finger, off.channels[0].mode));
+        }
+
+        [Test]
+        public void HapticsFeed_OnAndOffWithinOneFrame_IsSentAsATap()
+        {
+            RemoteHaptics feed = new RemoteHaptics(() => 1);
+            var lines = new System.Collections.Generic.List<string>();
+            feed.Poll(rig.Manager, lines);
+
+            rig.Left.haptics.HEXRVibration(Haptics.Finger.Palm, true, 6f, 0.5f);
+            rig.Left.haptics.HEXRVibration(Haptics.Finger.Palm, false, 6f, 0.5f);
+            feed.Poll(rig.Manager, lines);
+
+            RemoteHapticChannel tap = JsonUtility.FromJson<RemoteHapticsMessage>(lines[0]).channels[0];
+            Assert.AreEqual((5, "vibration", 50, 60, true), (tap.finger, tap.mode, tap.intensityPct, tap.frequencyDeciHz, tap.tap));
+        }
+
+        [Test]
+        public void HapticsFeed_Snapshot_HasEveryChannelOfBothHands()
+        {
+            RemoteHaptics feed = new RemoteHaptics(() => 1);
+            rig.Left.haptics.HEXRPressure(Haptics.Finger.Thumb, true, 1f, 1f);
+            feed.Poll(rig.Manager, new System.Collections.Generic.List<string>());
+
+            string[] snapshot = feed.Snapshot();
+            Assert.AreEqual(2, snapshot.Length);
+            RemoteHapticsMessage left = JsonUtility.FromJson<RemoteHapticsMessage>(snapshot[0]);
+            Assert.AreEqual(("left", 6), (left.hand, left.channels.Length));
+            Assert.AreEqual(("pressure", 100), (left.channels[0].mode, left.channels[0].intensityPct));
+            Assert.AreEqual("off", left.channels[1].mode);
+        }
+
+        [Test]
+        public void HapticsFeed_ARigGoingAway_TurnsItsChannelsOff()
+        {
+            RemoteHaptics feed = new RemoteHaptics(() => 1);
+            var lines = new System.Collections.Generic.List<string>();
+            rig.Right.haptics.HEXRPressure(Haptics.Finger.Ring, true, 0.5f, 1f);
+            feed.Poll(rig.Manager, lines);
+
+            lines.Clear();
+            feed.Poll(null, lines);
+            RemoteHapticsMessage gone = JsonUtility.FromJson<RemoteHapticsMessage>(lines[0]);
+            Assert.AreEqual(("right", 3, "off"), (gone.hand, gone.channels[0].finger, gone.channels[0].mode));
         }
     }
 }

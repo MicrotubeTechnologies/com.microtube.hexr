@@ -39,6 +39,13 @@ namespace HexR
         public const string Status = "status";
         public const string Error = "error";
         public const string Announce = "announce";
+        public const string HapticsMessage = "haptics";
+
+        // What a haptic channel is doing.
+        public const string HapticOff = "off";
+        public const string HapticPressure = "pressure";
+        public const string HapticVibration = "vibration";
+        public const string HapticPulse = "pulse";
 
         public const string Left = "left";
         public const string Right = "right";
@@ -213,6 +220,47 @@ namespace HexR
         public bool allowVideo;
         public bool exposeScenes;
         public int controllers;
+
+        /// <summary>This headset sends "haptics" lines. Headsets before it do not send the field.</summary>
+        public bool haptics;
+
+        /// <summary>The headset's clock when this status was made, in µs: the clock haptics and video are stamped with.</summary>
+        public long clockUs;
+    }
+
+    /// <summary>
+    /// What one glove's haptic channels started doing, sent the moment it happens: only the
+    /// channels that changed, or all six when a phone connects.
+    /// </summary>
+    [Serializable]
+    internal class RemoteHapticsMessage
+    {
+        public string type = RemoteProtocol.HapticsMessage;
+
+        /// <summary>When, in µs on RemoteClock: the video's presentation-time clock.</summary>
+        public long t;
+
+        public string hand = "";
+        public RemoteHapticChannel[] channels = new RemoteHapticChannel[0];
+    }
+
+    [Serializable]
+    internal class RemoteHapticChannel
+    {
+        /// <summary>0 thumb, 1 index, 2 middle, 3 ring, 4 pinky, 5 palm (Haptics.Finger).</summary>
+        public int finger;
+
+        /// <summary>"off", "pressure", "vibration" or "pulse".</summary>
+        public string mode = RemoteProtocol.HapticOff;
+
+        /// <summary>The command's intensity, 10-100 while on (0.1-1 in the API).</summary>
+        public int intensityPct;
+
+        /// <summary>Vibration and pulse frequency in tenths of a hertz; 0 for pressure.</summary>
+        public int frequencyDeciHz;
+
+        /// <summary>Switched on and off again within one frame: show it briefly.</summary>
+        public bool tap;
     }
 
     [Serializable]

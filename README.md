@@ -34,7 +34,7 @@ Or add it to `Packages/manifest.json` directly:
 ```
 
 Pinning is optional: `main` is kept releasable, so the unpinned URL above always resolves
-the latest release. Append a tag (`#v0.10.1`) when a build has to stay reproducible.
+the latest release. Append a tag (`#v0.10.2`) when a build has to stay reproducible.
 
 Either way, UPM caches a git dependency by the ref it resolved, so an unpinned URL does not
 re-check on its own. To pull a newer `main`, use **Window → Package Manager →
@@ -390,6 +390,11 @@ safe to call before the HexR Remote exists.
 - **Every phone request goes through the API your own code uses** (`HexRManager.Connect`,
   `Disconnect`, `ReleaseAllChannels`), on the main thread, exactly as the floating menu's buttons
   would.
+- **The gloves' haptics go out as they happen** (0.10.2 and later): every pressure, vibration
+  and pulse command, from any script, stamped on the video's clock, so the Tester can draw the
+  glove over the view and light up each touch on the frame that shows it, and record it. Nothing
+  to set up: it reads the state `HaptGlove.Haptics` already keeps. Older headsets still get an
+  overlay, from the measured pressure in the status, but without vibrations or taps.
 - **While nobody is wearing the headset** (the app is paused) requests are refused rather than
   queued, so nothing happens in front of whoever puts it on next. The Tester shows it as asleep.
 - **Sharing the view** uses Android's MediaProjection, which Meta allows on Quest for casting and
