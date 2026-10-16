@@ -1,6 +1,10 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
+// Kept in the build although nothing references it, as HexR.Runtime.MetaOVR is: see the note
+// there.
+[assembly: UnityEngine.Scripting.AlwaysLinkAssembly]
+
 namespace HexR.OpenXR
 {
     /// <summary>

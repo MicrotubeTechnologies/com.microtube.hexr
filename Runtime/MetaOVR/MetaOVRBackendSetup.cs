@@ -1,6 +1,12 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
+// Nothing references this assembly: it announces itself from the RuntimeInitializeOnLoadMethods
+// below. Unless a scene happens to hold one of its components (MetaOVRHandNearSource), the
+// build's code stripping drops the whole assembly, nothing registers, and on the headset the
+// menu can't be grabbed and hand-near gating is gone, though both work in the Editor.
+[assembly: UnityEngine.Scripting.AlwaysLinkAssembly]
+
 namespace HexR.MetaOVR
 {
     /// <summary>
