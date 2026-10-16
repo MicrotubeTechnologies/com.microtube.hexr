@@ -106,8 +106,10 @@ namespace HexR
         ///
         /// For the shared menu panel, which builds itself at runtime and so cannot have an
         /// interactable authored onto it. The caller has already added the Rigidbody and the
-        /// collider -- those are the same on both backends -- so this adds only the SDK's own
-        /// interactable on top.
+        /// collider -- those are the same on both backends -- so this adds the SDK's own
+        /// interactable on top. The Meta backend also moves the target's own colliders onto a
+        /// "Grab Handle" child with a body of its own, so the hand grabs by those and nothing
+        /// else under the target.
         /// </summary>
         void MakeGrabbable(GameObject target);
 

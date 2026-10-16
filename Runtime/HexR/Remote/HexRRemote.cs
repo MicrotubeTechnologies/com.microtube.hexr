@@ -24,7 +24,7 @@ namespace HexR
     public class HexRRemote : MonoBehaviour
     {
         /// <summary>The package version this file shipped in, reported to phones. A test keeps it equal to package.json.</summary>
-        public const string HexRVersion = "0.10.2";
+        public const string HexRVersion = "0.10.3";
 
         public static HexRRemote Instance { get; private set; }
 

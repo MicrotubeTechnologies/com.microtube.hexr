@@ -73,13 +73,100 @@ namespace HexR.MetaOVR
             // only runs when a component is added outside Play mode -- in Play mode and on the
             // headset, where the menu builds itself, it never runs.
             HandGrabInteractable interactable = target.AddComponent<HandGrabInteractable>();
-            if (body != null)
+            Rigidbody handle = GrabHandle(target);
+            if (handle != null)
             {
-                interactable.InjectRigidbody(body);
+                interactable.InjectRigidbody(handle);
             }
 
             interactable.InjectOptionalPointableElement(grabbable);
             interactable.InjectSupportedGrabTypes(GrabTypeFlags.All);
+        }
+
+        /// <summary>
+        /// The body the hand grabs by: a child holding copies of the target's own colliders and
+        /// nothing else. The originals are switched off, so the header has one collider, not two.
+        ///
+        /// HandGrabInteractable lists every collider under its Rigidbody once, in Start, and never
+        /// looks again. Under the menu that list also takes in the panel's button press volumes, and
+        /// the panel is torn down and rebuilt (its Scene view preview on the first frame, then on
+        /// every scene load), so the list fills with destroyed colliders. Meta's grab scoring
+        /// (GrabPoseHelper.CollidersScore) reads each one without a null check and throws as soon as
+        /// a hand comes near, so the grab never starts. On a body of its own the list is the header
+        /// alone, which is also all that was ever meant to be grabbable.
+        ///
+        /// Falls back to the target's own body when it has no collider of its own to copy.
+        /// </summary>
+        private static Rigidbody GrabHandle(GameObject target)
+        {
+            GameObject handle = null;
+            foreach (Collider source in target.GetComponents<Collider>())
+            {
+                if (!source.enabled || !CanCopy(source))
+                {
+                    continue;
+                }
+
+                if (handle == null)
+                {
+                    handle = new GameObject("Grab Handle");
+                    handle.layer = target.layer;
+                    handle.transform.SetParent(target.transform, false);
+                }
+
+                Copy(source, handle);
+                source.enabled = false;
+            }
+
+            if (handle == null)
+            {
+                return target.GetComponent<Rigidbody>();
+            }
+
+            Rigidbody body = handle.AddComponent<Rigidbody>();
+            body.isKinematic = true;
+            body.useGravity = false;
+            return body;
+        }
+
+        private static bool CanCopy(Collider source)
+        {
+            return source is BoxCollider || source is SphereCollider || source is CapsuleCollider;
+        }
+
+        // The handle sits at the target's origin with no rotation or scale of its own, so local
+        // centres and sizes carry over unchanged.
+        private static void Copy(Collider source, GameObject handle)
+        {
+            Collider copy;
+            BoxCollider box = source as BoxCollider;
+            SphereCollider sphere = source as SphereCollider;
+            CapsuleCollider capsule = source as CapsuleCollider;
+            if (box != null)
+            {
+                BoxCollider b = handle.AddComponent<BoxCollider>();
+                b.center = box.center;
+                b.size = box.size;
+                copy = b;
+            }
+            else if (sphere != null)
+            {
+                SphereCollider s = handle.AddComponent<SphereCollider>();
+                s.center = sphere.center;
+                s.radius = sphere.radius;
+                copy = s;
+            }
+            else
+            {
+                CapsuleCollider c = handle.AddComponent<CapsuleCollider>();
+                c.center = capsule.center;
+                c.radius = capsule.radius;
+                c.height = capsule.height;
+                c.direction = capsule.direction;
+                copy = c;
+            }
+
+            copy.isTrigger = source.isTrigger;
         }
 
         public bool IsGrabbed(GameObject target)
