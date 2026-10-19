@@ -36,7 +36,8 @@ namespace HexR.Tests
             "\"scenes\":[{\"index\":0,\"name\":\"Basic Tutorial\"},{\"index\":1,\"name\":\"Hospital Tutorial\"}]," +
             "\"gloves\":[{\"hand\":\"left\",\"state\":\"connected\",\"message\":\"Connected\",\"batteryPct\":83,\"pressureDeciKPa\":[10,0,0,0,0,0,452]}," +
             "{\"hand\":\"right\",\"state\":\"disconnected\",\"message\":\"\",\"batteryPct\":-1,\"pressureDeciKPa\":[]}]," +
-            "\"stream\":{\"state\":\"live\",\"port\":47802,\"width\":1024,\"height\":1024,\"viewers\":1,\"message\":\"\"}," +
+            "\"stream\":{\"state\":\"live\",\"port\":47802,\"width\":1024,\"height\":1024,\"viewers\":1,\"message\":\"\"," +
+            "\"audio\":{\"state\":\"live\",\"port\":47803,\"sampleRate\":48000,\"channels\":2,\"message\":\"\"}}," +
             "\"commands\":[{\"id\":\"reset\",\"label\":\"Reset demo\"}]," +
             "\"allowGloveControl\":true,\"allowVideo\":true,\"exposeScenes\":true,\"controllers\":2," +
             "\"haptics\":true,\"clockUs\":1791966541289123}";
@@ -315,7 +316,11 @@ namespace HexR.Tests
                     },
                     new RemoteGloveStatus { hand = "right", state = "disconnected" },
                 },
-                stream = new RemoteStreamStatus { state = "live", port = 47802, width = 1024, height = 1024, viewers = 1 },
+                stream = new RemoteStreamStatus
+                {
+                    state = "live", port = 47802, width = 1024, height = 1024, viewers = 1,
+                    audio = new RemoteAudioStatus { state = "live", port = 47803, sampleRate = 48000, channels = 2 },
+                },
                 commands = new[] { new RemoteCommandInfo { id = "reset", label = "Reset demo" } },
                 allowGloveControl = true,
                 allowVideo = true,

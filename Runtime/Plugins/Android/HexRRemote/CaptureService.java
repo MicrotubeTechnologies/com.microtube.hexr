@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.ComponentName;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
@@ -23,11 +24,14 @@ import android.os.SystemClock;
 import android.util.Log;
 import android.view.Surface;
 
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 
 /**
  * Runs one capture session: holds the MediaProjection, feeds it into an H.264 encoder and hands
- * every encoded packet to the VideoServer.
+ * every encoded packet to the video's StreamServer. When the app shares its sound, an
+ * AudioCapture on the same token serves that beside it.
  *
  * It has to be a foreground service of type mediaProjection: from Android 14 that is the only
  * place getMediaProjection may be called, and only after startForeground. The order below is the
@@ -40,6 +44,7 @@ public final class CaptureService extends Service {
     private static final int NOTIFICATION_ID = 0x4852;
     private static final String CHANNEL_ID = "hexr_remote_capture";
     private static final String MIME = MediaFormat.MIMETYPE_VIDEO_AVC;
+    private static final int CODEC_H264 = 1;
     private static final long SYNC_FRAME_GAP_MS = 500;
 
     private static volatile CaptureService current;
@@ -51,7 +56,10 @@ public final class CaptureService extends Service {
     private MediaCodec codec;
     private Surface inputSurface;
     private VirtualDisplay display;
-    private VideoServer server;
+    private StreamServer server;
+    private AudioCapture sound;
+    private volatile int videoWidth;
+    private volatile int videoHeight;
     private boolean started;
     private boolean stopped;
     private long lastSyncRequest;
@@ -219,7 +227,17 @@ public final class CaptureService extends Service {
         int height = HexRScreenCapture.requestedHeight;
         int fps = HexRScreenCapture.requestedFps;
 
-        server = new VideoServer(new VideoServer.Listener() {
+        videoWidth = width;
+        videoHeight = height;
+        server = new StreamServer("Video", new StreamServer.Header() {
+            @Override
+            public void write(DataOutputStream out) throws IOException {
+                out.writeBytes("HXV1");
+                out.writeShort(videoWidth);
+                out.writeShort(videoHeight);
+                out.writeByte(CODEC_H264);
+            }
+        }, new StreamServer.Listener() {
             @Override
             public void onKeyframeNeeded() {
                 requestSyncFrame();
@@ -230,7 +248,6 @@ public final class CaptureService extends Service {
                 HexRScreenCapture.setViewers(count);
             }
         });
-        server.setSize(width, height);
         int port = server.start(HexRScreenCapture.requestedPort);
         HexRScreenCapture.setPort(port);
         HexRScreenCapture.setSize(width, height);
@@ -248,6 +265,67 @@ public final class CaptureService extends Service {
 
         HexRScreenCapture.setState(HexRScreenCapture.STATE_LIVE, "");
         Log.i(TAG, "Capturing " + width + "x" + height + " at " + fps + " fps on port " + port);
+        startSound();
+    }
+
+    /**
+     * The app's sound beside the view, when the app shares it. Whatever goes wrong here costs the
+     * sound and says why in the status; the view carries on.
+     */
+    private void startSound() {
+        if (!HexRScreenCapture.requestedSound) {
+            HexRScreenCapture.setSound(HexRScreenCapture.STATE_OFF, "", 0);
+            return;
+        }
+
+        if (Build.VERSION.SDK_INT < 29) {
+            HexRScreenCapture.setSound(HexRScreenCapture.STATE_UNSUPPORTED, "This headset cannot share its sound: that needs Android 10.", 0);
+            return;
+        }
+
+        if (!HexRScreenCapture.declaresSoundPermission(this)) {
+            HexRScreenCapture.setSound(HexRScreenCapture.STATE_UNSUPPORTED,
+                    "This build of the app cannot share its sound: it was made without the RECORD_AUDIO permission.", 0);
+            return;
+        }
+
+        if (checkSelfPermission(HexRScreenCapture.SOUND_PERMISSION) != PackageManager.PERMISSION_GRANTED) {
+            HexRScreenCapture.setSound(HexRScreenCapture.STATE_DENIED,
+                    "The participant did not allow sharing the sound. It can be allowed in the app's permissions, under Microphone.", 0);
+            return;
+        }
+
+        try {
+            sound = new AudioCapture(projection, new AudioCapture.Listener() {
+                @Override
+                public void onFailed(final String message) {
+                    Handler handler = codecHandler;
+                    if (handler != null) {
+                        handler.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                stopSound(HexRScreenCapture.STATE_ERROR, message);
+                            }
+                        });
+                    }
+                }
+            });
+            int port = sound.start(HexRScreenCapture.requestedSoundPort);
+            HexRScreenCapture.setSound(HexRScreenCapture.STATE_LIVE, "", port);
+        } catch (Throwable t) {
+            Log.e(TAG, "The sound could not be shared", t);
+            sound = null;
+            HexRScreenCapture.setSound(HexRScreenCapture.STATE_ERROR, "Sharing the sound failed: " + t.getMessage(), 0);
+        }
+    }
+
+    private void stopSound(String state, String message) {
+        if (sound != null) {
+            sound.stop();
+            sound = null;
+        }
+
+        HexRScreenCapture.setSound(state, message, 0);
     }
 
     /**
@@ -320,7 +398,7 @@ public final class CaptureService extends Service {
         public void onOutputBufferAvailable(MediaCodec mc, int index, MediaCodec.BufferInfo info) {
             try {
                 ByteBuffer buffer = mc.getOutputBuffer(index);
-                VideoServer out = server;
+                StreamServer out = server;
                 if (buffer != null && info.size > 0 && out != null) {
                     byte[] data = new byte[info.size];
                     buffer.position(info.offset);
@@ -329,11 +407,11 @@ public final class CaptureService extends Service {
 
                     int flags = 0;
                     if ((info.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-                        flags |= VideoServer.FLAG_CONFIG;
+                        flags |= StreamServer.FLAG_CONFIG;
                     }
 
                     if ((info.flags & MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0) {
-                        flags |= VideoServer.FLAG_KEY;
+                        flags |= StreamServer.FLAG_KEY;
                     }
 
                     out.publish(flags, info.presentationTimeUs, data);
@@ -357,10 +435,8 @@ public final class CaptureService extends Service {
                 int w = format.getInteger(MediaFormat.KEY_WIDTH);
                 int h = format.getInteger(MediaFormat.KEY_HEIGHT);
                 HexRScreenCapture.setSize(w, h);
-                VideoServer out = server;
-                if (out != null) {
-                    out.setSize(w, h);
-                }
+                videoWidth = w;
+                videoHeight = h;
             } catch (Throwable t) {
                 Log.w(TAG, "Could not read the encoder's output size", t);
             }
@@ -368,9 +444,10 @@ public final class CaptureService extends Service {
     }
 
     /**
-     * Tears the session down in the order that releases cleanly: the display stops feeding the
-     * encoder, the encoder stops, then the token is given back. Safe to call more than once and
-     * from any thread; stopping the projection fires onStop, which lands back here.
+     * Tears the session down in the order that releases cleanly: the sound stops, the display
+     * stops feeding the encoder, the encoder stops, then the token is given back. Safe to call
+     * more than once and from any thread; stopping the projection fires onStop, which lands back
+     * here.
      */
     private synchronized void finish(String state, String message) {
         if (stopped) {
@@ -381,6 +458,8 @@ public final class CaptureService extends Service {
         if (current == this) {
             current = null;
         }
+
+        stopSound(HexRScreenCapture.STATE_OFF, "");
 
         if (display != null) {
             try {

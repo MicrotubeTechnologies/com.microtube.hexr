@@ -13,24 +13,24 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Serves the encoded headset view to any number of phones over plain TCP.
+ * Serves one encoded stream, the headset view or its sound, to any number of phones over plain
+ * TCP, each on a port of its own.
  *
- * Wire format (Documentation~/RemoteProtocol.md, "Video"), all integers big-endian:
- *   once per connection:  "HXV1"  u16 width  u16 height  u8 codec (1 = H.264)
+ * Wire format (Documentation~/RemoteProtocol.md, "Video" and "Sound"), all integers big-endian:
+ *   once per connection:  the stream's header, which its Header writes ("HXV1" or "HXA1" ...)
  *   then per packet:      u32 payloadLength  u8 flags (1 config, 2 key)  u64 ptsMicros  payload
- * The payload is the encoder's own Annex-B output, unchanged.
+ * The payload is the encoder's own output, unchanged: Annex-B H.264, or one raw AAC frame.
  *
  * A phone that falls behind is not allowed to fall further: its queue is bounded, and when it
  * fills, the backlog is thrown away and the phone waits for the next keyframe. Old video is
- * worth nothing to someone watching live.
+ * worth nothing to someone watching live. Every sound packet is a keyframe of its own.
  */
-final class VideoServer {
+final class StreamServer {
 
     static final int FLAG_CONFIG = 1;
     static final int FLAG_KEY = 2;
 
     private static final String TAG = HexRScreenCapture.TAG;
-    private static final int CODEC_H264 = 1;
     private static final int QUEUE_PACKETS = 90;
     private static final int PORT_ATTEMPTS = 10;
 
@@ -40,21 +40,24 @@ final class VideoServer {
         void onViewerCountChanged(int count);
     }
 
+    /** The bytes each connection starts with, written when a phone joins. */
+    interface Header {
+        void write(DataOutputStream out) throws IOException;
+    }
+
+    private final String name;
+    private final Header header;
     private final Listener listener;
     private final CopyOnWriteArrayList<Viewer> viewers = new CopyOnWriteArrayList<>();
     private ServerSocket serverSocket;
     private volatile boolean running;
     private volatile byte[] config;
-    private volatile int width;
-    private volatile int height;
 
-    VideoServer(Listener listener) {
+    /** `name` says which stream it is in thread names and the log: "Video" or "Sound". */
+    StreamServer(String name, Header header, Listener listener) {
+        this.name = name;
+        this.header = header;
         this.listener = listener;
-    }
-
-    void setSize(int w, int h) {
-        width = w;
-        height = h;
     }
 
     /**
@@ -88,7 +91,7 @@ final class VideoServer {
             public void run() {
                 acceptLoop();
             }
-        }, "HexRRemoteVideoAccept");
+        }, "HexRRemote" + name + "Accept");
         accept.setDaemon(true);
         accept.start();
         return serverSocket.getLocalPort();
@@ -136,13 +139,13 @@ final class VideoServer {
                 viewer.start();
                 listener.onViewerCountChanged(viewers.size());
                 listener.onKeyframeNeeded();
-                Log.i(TAG, "Phone watching from " + socket.getInetAddress().getHostAddress() + " (" + viewers.size() + " watching)");
+                Log.i(TAG, name + ": phone joined from " + socket.getInetAddress().getHostAddress() + " (" + viewers.size() + " joined)");
             } catch (IOException e) {
                 if (running) {
-                    Log.w(TAG, "Video accept failed", e);
+                    Log.w(TAG, name + " accept failed", e);
                 }
             } catch (Throwable t) {
-                Log.e(TAG, "Video accept loop", t);
+                Log.e(TAG, name + " accept loop", t);
             }
         }
     }
@@ -150,7 +153,7 @@ final class VideoServer {
     private void remove(Viewer viewer) {
         if (viewers.remove(viewer)) {
             listener.onViewerCountChanged(viewers.size());
-            Log.i(TAG, "Phone stopped watching (" + viewers.size() + " watching)");
+            Log.i(TAG, name + ": phone left (" + viewers.size() + " joined)");
         }
     }
 
@@ -183,7 +186,7 @@ final class VideoServer {
                 public void run() {
                     writeLoop();
                 }
-            }, "HexRRemoteVideoWriter");
+            }, "HexRRemote" + name + "Writer");
             writer.setDaemon(true);
             writer.start();
         }
@@ -221,10 +224,7 @@ final class VideoServer {
         private void writeLoop() {
             try {
                 DataOutputStream out = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream(), 64 * 1024));
-                out.writeBytes("HXV1");
-                out.writeShort(width);
-                out.writeShort(height);
-                out.writeByte(CODEC_H264);
+                header.write(out);
                 byte[] cached = config;
                 if (cached != null) {
                     writePacket(out, new Packet(FLAG_CONFIG, 0, cached));
@@ -245,7 +245,7 @@ final class VideoServer {
             } catch (IOException | InterruptedException e) {
                 // The phone went away, or the session ended.
             } catch (Throwable t) {
-                Log.w(TAG, "Video writer", t);
+                Log.w(TAG, name + " writer", t);
             } finally {
                 close();
                 remove(this);

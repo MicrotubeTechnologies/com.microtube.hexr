@@ -34,7 +34,7 @@ Or add it to `Packages/manifest.json` directly:
 ```
 
 Pinning is optional: `main` is kept releasable, so the unpinned URL above always resolves
-the latest release. Append a tag (`#v0.10.4`) when a build has to stay reproducible.
+the latest release. Append a tag (`#v0.10.5`) when a build has to stay reproducible.
 
 Either way, UPM caches a git dependency by the ref it resolved, so an unpinned URL does not
 re-check on its own. To pull a newer `main`, use **Window → Package Manager →
@@ -348,7 +348,7 @@ The controller is the HexR Tester:
    **File > Build Profiles** (Build Settings); the phone lists them by name.
 4. **Optionally, give the phone buttons of your own** (see [Your own buttons](#your-own-buttons-on-the-phone)).
 5. **Build for Android as usual.** The permissions HexR Remote needs are merged into your manifest
-   for you.
+   for you, `RECORD_AUDIO` among them only while it shares sound (see [Store submissions](#store-submissions)).
 6. **Check it.** Put the headset and the HexR Tester on the same Wi-Fi, open your app in the
    headset and the Tester's Headsets tab. The headset appears within a few seconds. Someone has
    to be wearing it before it takes requests.
@@ -364,7 +364,8 @@ The controller is the HexR Tester:
 | Video Bitrate Kbps | 4000 | |
 | Video Fps | 30 | |
 | Stop Video After Background Seconds | 20 | End the share if the app stays in the background this long, so it never captures another app or the home screen |
-| Discovery, Control, Video Port | 47800, 47801, 47802 | If the control or video port is taken, the next free one is used and announced |
+| Share Sound | on | Share the app's own sound with its view, so a recording on a computer has it (0.10.5 and later). The first time, the wearer is also asked for the microphone permission. |
+| Discovery, Control, Video, Audio Port | 47800, 47801, 47802, 47803 | If the control, video or audio port is taken, the next free one is used and announced |
 | Status Per Second | 5 | How often phones hear the headset's state |
 
 ### Your own buttons on the phone
@@ -402,6 +403,13 @@ safe to call before the HexR Remote exists.
   header reads "phone watching" while anyone is. Sharing stops when the phone stops it, when
   another app starts a capture, when the app closes, or when it stays in the background for
   `stopVideoAfterBackgroundSeconds`.
+- **Sharing the sound** (0.10.5 and later) goes with the view on the same prompt, so recordings
+  the Tester makes have it. It is only what your app plays, as media or game audio: never the
+  microphone, other apps or the system's sounds. Android guards every kind of audio capture with
+  the microphone permission even so, which the wearer is asked for once, the first time, just
+  before the capture prompt. A wearer who says no still shares the view, without sound; it can be
+  allowed later in the app's permissions, under Microphone. Muting the headset mutes the sound
+  the Tester gets. Turn Share Sound off for an app that should not ask.
 - **Telling headsets apart.** Headsets of one model report the same name ("Quest 3"), so name
   each one in the Tester ("Station 1"); the name is kept on that phone or computer. The id a
   headset reports comes from Android and depends on the app's signing key, so sign your apps with
@@ -415,6 +423,13 @@ The package adds these to every app that installs it, with or without a HexR Rem
 an invisible activity that hosts the capture prompt, and a foreground service of type
 `mediaProjection`. Android grants all four permissions at install without asking, and nothing
 starts unless a `HexRRemote` is in a scene.
+
+A build whose scenes have a HexR Remote with Share Sound on also declares `RECORD_AUDIO`
+(`HexRRemoteSoundPermission` adds it), which Meta reviews in Store submissions. The honest
+answer: it lets the app capture its own sound, never the microphone, to go with the view it
+casts to a facilitator; Android requires the permission for any audio capture. An app going to
+the Store that should not ask for it turns Share Sound off. A HexR Remote created at runtime from
+a prefab no build scene holds is not seen by the build, so that app adds the permission itself.
 
 A store review may ask about the media-projection foreground service (Google Play asks apps
 targeting Android 14 or later to declare each foreground service type they use). The honest

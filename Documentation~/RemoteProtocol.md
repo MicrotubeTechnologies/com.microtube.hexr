@@ -1,7 +1,7 @@
 # HexR Remote protocol, version 1
 
 How a phone (the HexR Tester's **Headsets** tab) finds a HexR app on a headset, connects and
-disconnects its gloves, reads their state and watches the headset view. The headset side is
+disconnects its gloves, reads their state and watches the headset view, with the app's sound. The headset side is
 `Runtime/HexR/Remote/` and `Runtime/Plugins/Android/HexRRemote/` in this package; the phone side
 is `android/app/src/main/java/com/microtube/hexr/remote/` in HexR-Window-Tester (branch
 `android`). `Tools~/hexr_remote_probe.py` speaks it from a computer.
@@ -21,10 +21,11 @@ in both places.
 | 47800 | UDP broadcast | headset → everyone | Announcement every 2 s |
 | 47801 | TCP | phone ↔ headset | Control: JSON lines |
 | 47802 | TCP | headset → phone | Video, while the view is being shared |
+| 47803 | TCP | headset → phone | Sound, while the view is being shared with it (0.10.5 and later) |
 
-The control and video ports are defaults. If one is taken the headset uses the next free one
-(up to +9, then any free port) and says so: the announcement carries the control port, and the
-status carries the video port. A phone never assumes either.
+The control, video and sound ports are defaults. If one is taken the headset uses the next free
+one (up to +9, then any free port) and says so: the announcement carries the control port, and
+the status carries the video and sound ports. A phone never assumes any of them.
 
 ## Discovery
 
@@ -89,7 +90,7 @@ can tell a sleeping headset (`"paused":true`) from a vanished one (nothing for 4
 line:
 
 ```json
-{"type":"status","protocol":1,"id":"q3-1","name":"Quest 3","model":"Oculus Quest 3","platform":"quest","app":"HexR Demo","appVersion":"1.2","hexrVersion":"0.10.0","paused":false,"headsetBatteryPct":71,"scene":{"index":1,"name":"Hospital Tutorial"},"scenes":[{"index":0,"name":"Basic Tutorial"},{"index":1,"name":"Hospital Tutorial"}],"gloves":[{"hand":"left","state":"connected","message":"Connected","batteryPct":83,"pressureDeciKPa":[10,0,0,0,0,0,452]},{"hand":"right","state":"disconnected","message":"","batteryPct":-1,"pressureDeciKPa":[]}],"stream":{"state":"live","port":47802,"width":1024,"height":1024,"viewers":1,"message":""},"commands":[{"id":"reset","label":"Reset demo"}],"allowGloveControl":true,"allowVideo":true,"exposeScenes":true,"controllers":2,"haptics":true,"clockUs":1791966541289123}
+{"type":"status","protocol":1,"id":"q3-1","name":"Quest 3","model":"Oculus Quest 3","platform":"quest","app":"HexR Demo","appVersion":"1.2","hexrVersion":"0.10.0","paused":false,"headsetBatteryPct":71,"scene":{"index":1,"name":"Hospital Tutorial"},"scenes":[{"index":0,"name":"Basic Tutorial"},{"index":1,"name":"Hospital Tutorial"}],"gloves":[{"hand":"left","state":"connected","message":"Connected","batteryPct":83,"pressureDeciKPa":[10,0,0,0,0,0,452]},{"hand":"right","state":"disconnected","message":"","batteryPct":-1,"pressureDeciKPa":[]}],"stream":{"state":"live","port":47802,"width":1024,"height":1024,"viewers":1,"message":"","audio":{"state":"live","port":47803,"sampleRate":48000,"channels":2,"message":""}},"commands":[{"id":"reset","label":"Reset demo"}],"allowGloveControl":true,"allowVideo":true,"exposeScenes":true,"controllers":2,"haptics":true,"clockUs":1791966541289123}
 ```
 
 - `gloves` always has left then right. `state` is `connected`, `connecting`, `disconnected`, or
@@ -104,6 +105,11 @@ line:
 - `stream.state`: `off`, `requesting` (the prompt is up in the headset), `live`, `denied`,
   `unsupported` (Editor, desktop, or an app with view sharing off), `error`. `message` says why.
   `port`, `width` and `height` are meaningful while `live`.
+- `stream.audio` is the app's sound beside the view (see Sound), with the same states: `live`
+  while it is served on `port`, as AAC at `sampleRate` Hz in `channels` channels; `denied` when the
+  wearer did not allow the microphone permission it needs; `unsupported` when the app does not
+  share its sound or its build cannot (`message` says which). Headsets before 0.10.5 do not send
+  it, and a phone reads it missing as no sound.
 - `controllers` is how many phones have a control connection.
 - `haptics` says the headset sends the haptics lines below. Headsets before it do not send the
   field, and a phone reads it missing as false.
@@ -167,3 +173,34 @@ a foreground service of type `mediaProjection`. Defaults: 1024×1024, 4 Mbit/s, 
 profile, a keyframe every second. On Quest, Meta's compositor fills the capture surface itself.
 Sharing ends if another app starts capturing, if the app is closed, or if it stays in the
 background for `stopVideoAfterBackgroundSeconds` (20 s by default).
+
+## Sound
+
+Plain TCP to `stream.audio.port`, while `stream.audio.state` is `live`. All integers big-endian.
+
+Once per connection, 10 bytes:
+
+```
+48 58 41 31   00 00 bb 80   02         01
+"HXA1"        sample rate   channels   codec (1 = AAC-LC)
+```
+
+Then packets with the video's 13-byte header (length, flags, presentation time in µs) and payload:
+
+- The first packet has flag bit 0 set and carries the AAC AudioSpecificConfig (2 bytes, 48 kHz
+  stereo: `11 90`). A viewer that joins later gets it first too. Its presentation time is 0.
+- Every other packet is one raw AAC frame of 1024 samples, no ADTS header, with flag bit 1 set:
+  each one decodes on its own.
+- The presentation time is when the frame played, on the clock the video and haptics lines carry,
+  so a viewer plays or records sound and picture together by their stamps alone.
+- A viewer that falls behind has its backlog dropped, as with the video.
+
+### On the headset
+
+The sound is Android's AudioPlaybackCapture on the same MediaProjection token as the view, so the
+wearer's one capture prompt covers both. It captures only what the app itself plays as media or
+game audio (`USAGE_MEDIA`, `USAGE_GAME`, the app's own UID): never the microphone, other apps or
+the system's sounds. Android guards all audio capture with `RECORD_AUDIO` all the same, so the
+first time, the wearer is also asked for the microphone permission, just before the capture
+prompt. HexR declares that permission only in builds whose scenes have a HexR Remote with Share
+Sound on. Muting the headset mutes what phones hear, as Meta's MediaProjection notes ask.

@@ -2,7 +2,11 @@ package com.microtube.hexr.remote;
 
 import android.app.Activity;
 import android.app.Application;
+import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -16,6 +20,10 @@ import android.util.Log;
  * video port until the session is stopped. Phones come and go without a new prompt; a new
  * session always needs a new one, because Android hands out a MediaProjection token exactly once.
  *
+ * The app's own sound goes with the view when the app shares it: on its own port, from the same
+ * token (AudioCapture). Android asks the participant for the microphone permission once, the
+ * first time, because it guards all audio capture with it.
+ *
  * Everything here is framework API only. Four of the HexR apps start on UnityPlayerActivity and
  * have no androidx on their classpath, so a single androidx import would fail their build.
  */
@@ -27,7 +35,10 @@ public final class HexRScreenCapture {
     public static final String STATE_REQUESTING = "requesting";
     public static final String STATE_LIVE = "live";
     public static final String STATE_DENIED = "denied";
+    public static final String STATE_UNSUPPORTED = "unsupported";
     public static final String STATE_ERROR = "error";
+
+    static final String SOUND_PERMISSION = "android.permission.RECORD_AUDIO";
 
     private static volatile String state = STATE_OFF;
     private static volatile String message = "";
@@ -35,6 +46,9 @@ public final class HexRScreenCapture {
     private static volatile int height;
     private static volatile int port;
     private static volatile int viewers;
+    private static volatile String soundState = STATE_OFF;
+    private static volatile String soundMessage = "";
+    private static volatile int soundPort;
 
     // What the session being asked for should look like, read by CaptureService when it starts.
     static volatile int requestedWidth = 1024;
@@ -42,6 +56,8 @@ public final class HexRScreenCapture {
     static volatile int requestedBitrate = 4000000;
     static volatile int requestedFps = 30;
     static volatile int requestedPort = 47802;
+    static volatile boolean requestedSound = true;
+    static volatile int requestedSoundPort = 47803;
 
     // The consent result, handed from the prompt's activity to the service. Same process, so a
     // static is enough, and it avoids the getParcelableExtra signature that changed in API 33
@@ -69,12 +85,14 @@ public final class HexRScreenCapture {
      * Asks the participant to allow capture and, if they do, starts serving the headset view on
      * the video port. Does nothing while a session is being asked for or is already running.
      *
+     * shareSound: serve the app's own sound beside the view, on soundPort.
+     *
      * stopAfterBackgroundSeconds: if the Unity activity stays stopped this long (another app in
      * front, or the headset asleep), the session ends rather than keep capturing whatever is on
      * screen now, and keep the ports, with nobody in this app to see it.
      */
     public static void start(final Activity activity, int width, int height, int bitrateKbps, int fps,
-                             int videoPort, int stopAfterBackgroundSeconds) {
+                             int videoPort, boolean shareSound, int soundPort, int stopAfterBackgroundSeconds) {
         if (activity == null) {
             setState(STATE_ERROR, "No activity to show the capture prompt from.");
             return;
@@ -91,7 +109,10 @@ public final class HexRScreenCapture {
         requestedBitrate = Math.max(250, bitrateKbps) * 1000;
         requestedFps = Math.max(5, Math.min(60, fps));
         requestedPort = videoPort;
+        requestedSound = shareSound;
+        requestedSoundPort = soundPort;
         stopAfterBackgroundMs = Math.max(1, stopAfterBackgroundSeconds) * 1000L;
+        setSound(STATE_OFF, "", 0);
 
         hostActivity = activity;
         watchLifecycle(activity.getApplication());
@@ -146,6 +167,26 @@ public final class HexRScreenCapture {
 
     public static int getViewerCount() {
         return viewers;
+    }
+
+    public static String getSoundState() {
+        return soundState;
+    }
+
+    public static String getSoundMessage() {
+        return soundMessage;
+    }
+
+    public static int getSoundPort() {
+        return soundPort;
+    }
+
+    public static int getSoundSampleRate() {
+        return AudioCapture.SAMPLE_RATE;
+    }
+
+    public static int getSoundChannels() {
+        return AudioCapture.CHANNELS;
     }
 
     // ---- called by the prompt activity and the service ---------------------------------------
@@ -207,6 +248,39 @@ public final class HexRScreenCapture {
         }
 
         Log.i(TAG, "Capture " + newState + (message.isEmpty() ? "" : ": " + message));
+    }
+
+    static void setSound(String newState, String newMessage, int newPort) {
+        soundState = newState;
+        soundMessage = newMessage == null ? "" : newMessage;
+        soundPort = newPort;
+        if (!STATE_OFF.equals(newState) || !soundMessage.isEmpty()) {
+            Log.i(TAG, "Sound " + newState + (soundMessage.isEmpty() ? "" : ": " + soundMessage));
+        }
+    }
+
+    /** Whether this build's manifest asks for RECORD_AUDIO: HexR adds it only to apps that share sound. */
+    static boolean declaresSoundPermission(Context context) {
+        try {
+            PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), PackageManager.GET_PERMISSIONS);
+            if (info.requestedPermissions != null) {
+                for (String permission : info.requestedPermissions) {
+                    if (SOUND_PERMISSION.equals(permission)) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Could not read this app's permissions", t);
+        }
+
+        return false;
+    }
+
+    /** Whether the prompt has to ask for the microphone permission before the capture one. */
+    static boolean needsSoundPermission(Context context) {
+        return requestedSound && Build.VERSION.SDK_INT >= 29 && declaresSoundPermission(context)
+                && context.checkSelfPermission(SOUND_PERMISSION) != PackageManager.PERMISSION_GRANTED;
     }
 
     static void setSize(int w, int h) {

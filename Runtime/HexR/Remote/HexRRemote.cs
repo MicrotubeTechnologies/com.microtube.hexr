@@ -24,7 +24,7 @@ namespace HexR
     public class HexRRemote : MonoBehaviour
     {
         /// <summary>The package version this file shipped in, reported to phones. A test keeps it equal to package.json.</summary>
-        public const string HexRVersion = "0.10.4";
+        public const string HexRVersion = "0.10.5";
 
         public static HexRRemote Instance { get; private set; }
 
@@ -53,6 +53,9 @@ namespace HexR
         [Tooltip("End the view share if this app stays in the background this long, so it never keeps capturing another app or the home screen.")]
         public int stopVideoAfterBackgroundSeconds = 20;
 
+        [Tooltip("Share this app's own sound with its view, so a computer's recording has it. Only this app's sound, never the microphone, but Android guards all audio capture with the microphone permission: the wearer is asked for it the first time. HexR adds that permission to the build only while this is on.")]
+        public bool shareSound = true;
+
         [Header("Network")]
         [Tooltip("UDP port phones listen on for this headset's announcement.")]
         public int discoveryPort = RemoteProtocol.DefaultDiscoveryPort;
@@ -62,6 +65,9 @@ namespace HexR
 
         [Tooltip("TCP port for the video. If it is taken, the next free one is used and reported.")]
         public int videoPort = RemoteProtocol.DefaultVideoPort;
+
+        [Tooltip("TCP port for the sound. If it is taken, the next free one is used and reported.")]
+        public int audioPort = RemoteProtocol.DefaultAudioPort;
 
         [Range(1, 20)]
         public float statusPerSecond = 5f;
@@ -409,6 +415,12 @@ namespace HexR
             {
                 lastStream.state = RemoteStreamState.Unsupported;
                 lastStream.message = "This app does not share its view.";
+            }
+
+            if ((!allowVideo || !shareSound) && lastStream.audio.state != RemoteStreamState.Live)
+            {
+                lastStream.audio.state = RemoteStreamState.Unsupported;
+                lastStream.audio.message = "This app does not share its sound.";
             }
 
             if (lastStream.port > 0 && lastStream.port != announcedVideoPort)

@@ -27,6 +27,7 @@ namespace HexR
         public const int DefaultDiscoveryPort = 47800;
         public const int DefaultControlPort = 47801;
         public const int DefaultVideoPort = 47802;
+        public const int DefaultAudioPort = 47803;
 
         // Request and message types.
         public const string Hello = "hello";
@@ -290,6 +291,18 @@ namespace HexR
         public int width;
         public int height;
         public int viewers;
+        public string message = "";
+        public RemoteAudioStatus audio = new RemoteAudioStatus();
+    }
+
+    /// <summary>The app's sound beside the view: its own port, AAC at this rate. States as the view's.</summary>
+    [Serializable]
+    internal class RemoteAudioStatus
+    {
+        public string state = RemoteStreamState.Off;
+        public int port;
+        public int sampleRate;
+        public int channels;
         public string message = "";
     }
 

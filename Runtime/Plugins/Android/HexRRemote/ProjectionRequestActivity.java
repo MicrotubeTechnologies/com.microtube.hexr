@@ -9,7 +9,8 @@ import android.os.Bundle;
 
 /**
  * An invisible activity whose only job is to show Android's "allow screen sharing" prompt and
- * pass the answer on.
+ * pass the answer on. When the app shares its sound and has never been allowed to, Android's
+ * microphone prompt comes first: Android guards capturing even an app's own sound with it.
  *
  * The answer to that prompt comes back as an activity result, and the Unity activity cannot
  * receive one: some HexR apps run UnityPlayerActivity, others UnityPlayerGameActivity, and a
@@ -19,22 +20,59 @@ import android.os.Bundle;
 public final class ProjectionRequestActivity extends Activity {
 
     private static final int REQUEST_CAPTURE = 0x4852;
+    private static final int REQUEST_SOUND = 0x4853;
     private static final String KEY_ASKED = "asked";
+    private static final String KEY_ASKED_SOUND = "askedSound";
 
-    // Survives a recreate while the prompt is up, so a rotation or config change does not ask twice.
+    // Survive a recreate while a prompt is up, so a rotation or config change does not ask twice.
     private boolean asked;
+    private boolean askedSound;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         if (savedInstanceState != null) {
             asked = savedInstanceState.getBoolean(KEY_ASKED, false);
+            askedSound = savedInstanceState.getBoolean(KEY_ASKED_SOUND, false);
         }
 
-        if (asked) {
+        if (asked || askedSound) {
             return;
         }
 
+        try {
+            if (HexRScreenCapture.needsSoundPermission(this)) {
+                askedSound = true;
+                requestPermissions(new String[] { HexRScreenCapture.SOUND_PERMISSION }, REQUEST_SOUND);
+                return;
+            }
+        } catch (Throwable t) {
+            // No sound, then: CaptureService says why once the view is shared.
+            askedSound = false;
+        }
+
+        askToCapture();
+    }
+
+    /**
+     * Whatever the participant said about the microphone, the view is asked for next: a "no" there
+     * costs the sound, not the view. Unless the phone withdrew the request meanwhile.
+     */
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQUEST_SOUND || asked) {
+            return;
+        }
+
+        if (HexRScreenCapture.STATE_REQUESTING.equals(HexRScreenCapture.getState())) {
+            askToCapture();
+        } else {
+            finishQuietly();
+        }
+    }
+
+    private void askToCapture() {
         try {
             MediaProjectionManager manager = getSystemService(MediaProjectionManager.class);
             Intent prompt;
@@ -58,6 +96,7 @@ public final class ProjectionRequestActivity extends Activity {
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putBoolean(KEY_ASKED, asked);
+        outState.putBoolean(KEY_ASKED_SOUND, askedSound);
     }
 
     @Override

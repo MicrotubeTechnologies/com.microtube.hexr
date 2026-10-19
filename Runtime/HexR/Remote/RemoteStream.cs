@@ -43,6 +43,7 @@ namespace HexR
             {
                 state = RemoteStreamState.Unsupported,
                 message = "Sharing the view needs the app running on the headset.",
+                audio = new RemoteAudioStatus { state = RemoteStreamState.Unsupported },
             };
         }
     }
@@ -79,7 +80,7 @@ namespace HexR
                 {
                     cls.CallStatic("start", activity, settings.videoWidth, settings.videoHeight,
                         settings.videoBitrateKbps, settings.videoFps, settings.videoPort,
-                        settings.stopVideoAfterBackgroundSeconds);
+                        settings.shareSound, settings.audioPort, settings.stopVideoAfterBackgroundSeconds);
                 }
             }
             catch (Exception e)
@@ -115,6 +116,7 @@ namespace HexR
                 {
                     state = RemoteStreamState.Unsupported,
                     message = "This build is missing HexR's screen capture plugin.",
+                    audio = new RemoteAudioStatus { state = RemoteStreamState.Unsupported },
                 };
             }
 
@@ -128,6 +130,14 @@ namespace HexR
                     width = cls.CallStatic<int>("getWidth"),
                     height = cls.CallStatic<int>("getHeight"),
                     viewers = cls.CallStatic<int>("getViewerCount"),
+                    audio = new RemoteAudioStatus
+                    {
+                        state = cls.CallStatic<string>("getSoundState"),
+                        message = cls.CallStatic<string>("getSoundMessage"),
+                        port = cls.CallStatic<int>("getSoundPort"),
+                        sampleRate = cls.CallStatic<int>("getSoundSampleRate"),
+                        channels = cls.CallStatic<int>("getSoundChannels"),
+                    },
                 };
             }
             catch (Exception e)
