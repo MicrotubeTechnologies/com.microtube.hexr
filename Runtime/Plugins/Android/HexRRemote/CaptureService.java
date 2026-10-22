@@ -46,6 +46,10 @@ public final class CaptureService extends Service {
     private static final String MIME = MediaFormat.MIMETYPE_VIDEO_AVC;
     private static final int CODEC_H264 = 1;
     private static final long SYNC_FRAME_GAP_MS = 500;
+    // A stop this soon after the participant allowed the capture is the headset ending it as it
+    // started, not anyone choosing to (see retryOnce).
+    private static final long EARLY_STOP_MS = 2000;
+    private static final long RETRY_DELAY_MS = 1000;
 
     private static volatile CaptureService current;
 
@@ -63,6 +67,9 @@ public final class CaptureService extends Service {
     private boolean started;
     private boolean stopped;
     private long lastSyncRequest;
+    private long captureStartedAt;
+    private int retryResultCode;
+    private Intent retryConsent;
 
     static CaptureService current() {
         return current;
@@ -202,33 +209,24 @@ public final class CaptureService extends Service {
         }
     }
 
-    private void begin(int resultCode, Intent consent) throws Exception {
+    /**
+     * Synchronized with finish. The projection's onStop runs on the codec thread, and on PICO it
+     * fired while this was still on the main thread setting up: finish nulled the projection
+     * under it, it threw at createVirtualDisplay, and the server and encoder it had made by then
+     * were never released. Now a stop that lands during setup waits until there is a whole
+     * session to tear down, and a session already ended before this runs is not started.
+     */
+    private synchronized void begin(int resultCode, Intent consent) throws Exception {
+        if (stopped) {
+            return;
+        }
+
         codecThread = new HandlerThread("HexRRemoteCodec");
         codecThread.start();
         codecHandler = new Handler(codecThread.getLooper());
 
-        MediaProjectionManager manager = getSystemService(MediaProjectionManager.class);
-        projection = manager.getMediaProjection(resultCode, consent);
-        if (projection == null) {
-            throw new IllegalStateException("the headset returned no capture token");
-        }
-
-        // Required before createVirtualDisplay from Android 14, and Meta requires it on Quest:
-        // another app taking the capture ends ours, and this is how we hear about it.
-        projectionCallback = new MediaProjection.Callback() {
-            @Override
-            public void onStop() {
-                finish(HexRScreenCapture.STATE_OFF, "The headset ended the screen sharing.");
-            }
-        };
-        projection.registerCallback(projectionCallback, codecHandler);
-
-        int width = HexRScreenCapture.requestedWidth;
-        int height = HexRScreenCapture.requestedHeight;
-        int fps = HexRScreenCapture.requestedFps;
-
-        videoWidth = width;
-        videoHeight = height;
+        videoWidth = HexRScreenCapture.requestedWidth;
+        videoHeight = HexRScreenCapture.requestedHeight;
         server = new StreamServer("Video", new StreamServer.Header() {
             @Override
             public void write(DataOutputStream out) throws IOException {
@@ -248,8 +246,52 @@ public final class CaptureService extends Service {
                 HexRScreenCapture.setViewers(count);
             }
         });
-        int port = server.start(HexRScreenCapture.requestedPort);
-        HexRScreenCapture.setPort(port);
+        HexRScreenCapture.setPort(server.start(HexRScreenCapture.requestedPort));
+
+        // Below Android 14 a consent can start a projection again after the headset has ended
+        // it, so it is kept for one retry. From 14 Android refuses a second use of it.
+        if (Build.VERSION.SDK_INT < 34) {
+            retryResultCode = resultCode;
+            retryConsent = consent;
+        }
+
+        try {
+            startCapture(resultCode, consent);
+        } catch (Exception e) {
+            Log.w(TAG, "Capture failed to start", e);
+            if (!retryOnce("Capture failed to start (" + e.getMessage() + ")")) {
+                throw e;
+            }
+        }
+    }
+
+    /**
+     * The projection and everything fed from it. A retry runs this again on the same video
+     * server, so phones already connected stay connected and get the new encoder's keyframe.
+     */
+    private void startCapture(int resultCode, Intent consent) throws Exception {
+        captureStartedAt = SystemClock.elapsedRealtime();
+        MediaProjectionManager manager = getSystemService(MediaProjectionManager.class);
+        projection = manager.getMediaProjection(resultCode, consent);
+        if (projection == null) {
+            throw new IllegalStateException("the headset returned no capture token");
+        }
+
+        // Required before createVirtualDisplay from Android 14, and Meta requires it on Quest:
+        // another app taking the capture ends ours, and this is how we hear about it. It names
+        // its own projection, so a stop of one already replaced by a retry is ignored.
+        final MediaProjection mine = projection;
+        projectionCallback = new MediaProjection.Callback() {
+            @Override
+            public void onStop() {
+                onProjectionStopped(mine);
+            }
+        };
+        projection.registerCallback(projectionCallback, codecHandler);
+
+        int width = HexRScreenCapture.requestedWidth;
+        int height = HexRScreenCapture.requestedHeight;
+        int fps = HexRScreenCapture.requestedFps;
         HexRScreenCapture.setSize(width, height);
 
         codec = createEncoder(width, height, HexRScreenCapture.requestedBitrate, fps);
@@ -264,8 +306,65 @@ public final class CaptureService extends Service {
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, inputSurface, null, codecHandler);
 
         HexRScreenCapture.setState(HexRScreenCapture.STATE_LIVE, "");
-        Log.i(TAG, "Capturing " + width + "x" + height + " at " + fps + " fps on port " + port);
+        Log.i(TAG, "Capturing " + width + "x" + height + " at " + fps + " fps on port " + HexRScreenCapture.getPort());
         startSound();
+    }
+
+    private synchronized void onProjectionStopped(MediaProjection which) {
+        if (stopped || which != projection) {
+            return;
+        }
+
+        if (retryOnce("The headset ended the capture as it started")) {
+            return;
+        }
+
+        boolean early = SystemClock.elapsedRealtime() - captureStartedAt <= EARLY_STOP_MS;
+        finish(HexRScreenCapture.STATE_OFF, early
+                ? "The headset ended the screen sharing as it started. Ask to share again."
+                : "The headset ended the screen sharing.");
+    }
+
+    /**
+     * On its first share a PICO 4 Pro (Android 10) ended the capture milliseconds after the
+     * participant allowed it, and asking again a few seconds later worked. Below Android 14 the
+     * same consent can start the projection again, so that second try happens here, once, a
+     * second later, instead of sending the participant back to the prompt. Only within
+     * EARLY_STOP_MS of the start: nobody ends a share they allowed a moment ago, but a later stop
+     * may be the participant or another app taking the capture, and that one stands.
+     */
+    private boolean retryOnce(String why) {
+        if (retryConsent == null || codecHandler == null
+                || SystemClock.elapsedRealtime() - captureStartedAt > EARLY_STOP_MS) {
+            return false;
+        }
+
+        final int resultCode = retryResultCode;
+        final Intent consent = retryConsent;
+        retryConsent = null;
+        Log.w(TAG, why + "; starting it again with the same permission in " + RETRY_DELAY_MS + " ms.");
+        releaseCapture();
+        codecHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                restartCapture(resultCode, consent);
+            }
+        }, RETRY_DELAY_MS);
+        return true;
+    }
+
+    private synchronized void restartCapture(int resultCode, Intent consent) {
+        if (stopped) {
+            return;
+        }
+
+        try {
+            startCapture(resultCode, consent);
+        } catch (Throwable t) {
+            Log.e(TAG, "Capture failed to start again", t);
+            finish(HexRScreenCapture.STATE_ERROR,
+                    "The headset ended the screen sharing as it started, and it would not start again: " + t.getMessage());
+        }
     }
 
     /**
@@ -444,10 +543,9 @@ public final class CaptureService extends Service {
     }
 
     /**
-     * Tears the session down in the order that releases cleanly: the sound stops, the display
-     * stops feeding the encoder, the encoder stops, then the token is given back. Safe to call
-     * more than once and from any thread; stopping the projection fires onStop, which lands back
-     * here.
+     * Tears the session down: the capture, then the video server, then the service. Safe to call
+     * more than once and from any thread, and synchronized with begin, so it never runs on a
+     * session half set up.
      */
     private synchronized void finish(String state, String message) {
         if (stopped) {
@@ -455,10 +553,42 @@ public final class CaptureService extends Service {
         }
 
         stopped = true;
+        retryConsent = null;
         if (current == this) {
             current = null;
         }
 
+        releaseCapture();
+
+        if (server != null) {
+            server.close();
+            server = null;
+        }
+
+        HexRScreenCapture.setPort(0);
+        HexRScreenCapture.setState(state, message);
+
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE);
+        } catch (Throwable t) {
+            Log.w(TAG, "stopForeground", t);
+        }
+
+        stopSelf();
+
+        if (codecThread != null) {
+            codecThread.quitSafely();
+            codecThread = null;
+            codecHandler = null;
+        }
+    }
+
+    /**
+     * Releases what startCapture made, in the order that releases cleanly: the sound stops, the
+     * display stops feeding the encoder, the encoder stops, then the token is given back. Its
+     * callback is unregistered first, so giving it back does not land in onProjectionStopped.
+     */
+    private void releaseCapture() {
         stopSound(HexRScreenCapture.STATE_OFF, "");
 
         if (display != null) {
@@ -509,28 +639,7 @@ public final class CaptureService extends Service {
             }
 
             projection = null;
-        }
-
-        if (server != null) {
-            server.close();
-            server = null;
-        }
-
-        HexRScreenCapture.setPort(0);
-        HexRScreenCapture.setState(state, message);
-
-        try {
-            stopForeground(STOP_FOREGROUND_REMOVE);
-        } catch (Throwable t) {
-            Log.w(TAG, "stopForeground", t);
-        }
-
-        stopSelf();
-
-        if (codecThread != null) {
-            codecThread.quitSafely();
-            codecThread = null;
-            codecHandler = null;
+            projectionCallback = null;
         }
     }
 }
