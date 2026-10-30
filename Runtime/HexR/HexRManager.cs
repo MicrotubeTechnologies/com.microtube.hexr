@@ -469,7 +469,7 @@ namespace HexR
                 Disconnect(hand);
             }
 
-            Debug.Log("[HexR] The " + hand + " glove is now " + address + ".");
+            Debug.Log("[HexR] The " + hand + " glove is now " + GloveNames.For(address) + " (" + address + ").");
             handler.RememberDevice(address);
             Connect(hand);
             return null;
@@ -485,6 +485,17 @@ namespace HexR
             if (handler == null) return;
             Debug.Log("[HexR] Forgot the saved " + hand + " glove (" + handler.GetRememberedDeviceId() + ").");
             handler.ForgetDevice();
+        }
+
+        /// <summary>
+        /// "Left", or "Left · Fiery Panther" once a module has connected: the hand, and which arm module
+        /// it is (<see cref="GloveNames"/>), the name the HEXR Companion shows for it too.
+        /// </summary>
+        public string HandLabel(HaptGloveHandler.HandType hand)
+        {
+            HaptGloveHandler handler = HandlerFor(hand);
+            string name = handler != null ? handler.GloveName : "";
+            return hand.ToString() + (name.Length > 0 ? " · " + name : "");
         }
 
         /// <summary>The address saved for that hand, which it connects to; empty when none is.</summary>
@@ -799,7 +810,7 @@ namespace HexR
                 SetActiveIfAssigned(BluetoothIndicatorL, true);
                 if (LeftBtText != null)
                 {
-                    LeftBtText.text = "Left connected — starting up…";
+                    LeftBtText.text = HandLabel(HaptGloveHandler.HandType.Left) + " connected — starting up…";
                 }
                 StartCoroutine(Pump(leftHand.GetComponent<HaptGloveHandler>()));
                 StopBatteryPolling(hand);
@@ -810,7 +821,7 @@ namespace HexR
                 SetActiveIfAssigned(BluetoothIndicatorR, true);
                 if (RightBtText != null)
                 {
-                    RightBtText.text = "Right connected — starting up…";
+                    RightBtText.text = HandLabel(HaptGloveHandler.HandType.Right) + " connected — starting up…";
                 }
                 StartCoroutine(Pump(rightHand.GetComponent<HaptGloveHandler>()));
                 StopBatteryPolling(hand);
@@ -954,7 +965,7 @@ namespace HexR
             {
                 if (LeftBtText != null)
                 {
-                    LeftBtText.text = "Left ready";
+                    LeftBtText.text = HandLabel(HaptGloveHandler.HandType.Left) + " ready";
                 }
                 if (state)
                     SetActiveIfAssigned(pumpIndicator_L, true);
@@ -965,7 +976,7 @@ namespace HexR
             {
                 if (RightBtText != null)
                 {
-                    RightBtText.text = "Right ready";
+                    RightBtText.text = HandLabel(HaptGloveHandler.HandType.Right) + " ready";
                 }
                 if (state)
                     SetActiveIfAssigned(pumpIndicator_R, true);

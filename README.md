@@ -169,6 +169,12 @@ to list them. `HaptGlove.Runtime` is different — it is an asmdef, so `HexR.Run
   After that the hand connects by the saved address only, so with several kits switched on in
   one room a headset keeps to its own gloves. To pick a glove out deliberately, search and
   connect by address (below, and from HexR Remote).
+- **Every arm module has its own name.** `GloveNames.For(address)` turns a module's Bluetooth
+  address into two words, an adjective and an animal ("Fiery Panther"; Chinese too), the same way
+  in every HexR app and HEXR Companion, so the same module is called the same thing everywhere
+  with nothing to set up. `HaptGloveHandler.GloveName` is the connected module's, and the floating
+  menu shows it beside the hand ("Left ready · Fiery Panther"). The recipe and its word lists are
+  fixed: changing them renames every module in the field.
 - **Only one hand scans at a time.** The plugin keeps its scanning flag and its discovered-
   device list in static fields shared by both hands, so two concurrent scans clear each
   other's results. A second connect request is queued and started when the first finishes.
