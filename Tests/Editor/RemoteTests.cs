@@ -295,6 +295,20 @@ namespace HexR.Tests
             Assert.IsNull(HexRManager.HandFromName(null));
         }
 
+        // ---- trigger -----------------------------------------------------------------------------
+
+        [Test]
+        public void Trigger_WithNoGloveConnected_SaysSo()
+        {
+            StringAssert.Contains("No glove is connected", Run("{\"type\":\"trigger\"}"));
+        }
+
+        [Test]
+        public void Trigger_ForAHandThatIsNeither_IsRefused()
+        {
+            StringAssert.Contains("Say which glove", Run("{\"type\":\"trigger\",\"hand\":\"up\"}"));
+        }
+
         // ---- recenter ----------------------------------------------------------------------------
 
         [Test]

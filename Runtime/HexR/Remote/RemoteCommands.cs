@@ -43,6 +43,8 @@ namespace HexR
                     return Glove(request);
                 case RemoteProtocol.Release:
                     return Release(request);
+                case RemoteProtocol.Trigger:
+                    return Trigger(request);
                 case RemoteProtocol.Scene:
                     return Scene(request);
                 case RemoteProtocol.Command:
@@ -160,6 +162,47 @@ namespace HexR
             }
 
             return null;
+        }
+
+        // Every channel of the connected gloves pressed for a second, then released: does the glove
+        // work? Like release, "hand" limits it to one.
+        private string Trigger(RemoteRequest request)
+        {
+            if (!AllowGloveControl)
+            {
+                return "This app does not let a phone control its gloves.";
+            }
+
+            HexRManager rig = manager();
+            if (rig == null)
+            {
+                return "There is no HexR rig in this scene.";
+            }
+
+            bool anyHand = string.IsNullOrEmpty(request.hand);
+            bool oneHand = RemoteProtocol.TryParseHand(request.hand, out HaptGloveHandler.HandType only);
+            if (!anyHand && !oneHand)
+            {
+                return "Say which glove: \"left\", \"right\", or neither for both.";
+            }
+
+            bool any = false;
+            foreach (HaptGloveHandler.HandType hand in Hands)
+            {
+                if (!anyHand && hand != only)
+                {
+                    continue;
+                }
+
+                HaptGloveHandler handler = HandlerFor(rig, hand);
+                if (handler != null && handler.bleConnected)
+                {
+                    handler.TestAllChannels();
+                    any = true;
+                }
+            }
+
+            return any ? null : "No glove is connected to trigger.";
         }
 
         private string Scene(RemoteRequest request)

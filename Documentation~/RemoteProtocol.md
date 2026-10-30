@@ -62,6 +62,7 @@ fields mean "not given" (`index` defaults to -1).
 | glove | `{"type":"glove","action":"connect","hand":"left","address":"D4:3D:39:A1:B2:C3"}` | `HexRManager.ConnectTo(Left, address)`: that exact glove, saved for the hand (0.10.6 and later) |
 | glove | `{"type":"glove","action":"forget","hand":"left"}` | `HexRManager.ForgetGlove(Left)`: the hand takes the first glove it finds again (0.10.6 and later) |
 | release | `{"type":"release"}` | `ReleaseAllChannels()` on connected gloves; `"hand"` limits it to one |
+| trigger | `{"type":"trigger"}` | `TestAllChannels()` on connected gloves: every finger and the palm pressed for a second, then released, to check a glove works; `"hand"` limits it to one (0.10.6 and later) |
 | scene | `{"type":"scene","index":2}` | Load build scene 2 (only if the app exposes scenes) |
 | command | `{"type":"command","id":"reset"}` | Run a command the app registered |
 | stream | `{"type":"stream","action":"start"}` | Ask the wearer to share the view; `"stop"` ends sharing |

@@ -1478,6 +1478,50 @@ namespace HaptGlove
         /// <summary>Switches every channel on this glove off, vibration and pressure alike.</summary>
         public void ReleaseAllChannels()
         {
+            if (testRelease != null)
+            {
+                StopCoroutine(testRelease);
+                testRelease = null;
+            }
+            ReleaseChannels(AllChannels);
+        }
+
+        private Coroutine testRelease;
+
+        /// <summary>
+        /// Presses every finger and the palm at once, then lets go: a quick check that the glove is
+        /// connected and every channel works. Does nothing while the glove is not connected.
+        /// </summary>
+        public void TestAllChannels(float intensity = 0.8f, float holdSeconds = 1f)
+        {
+            if (!bleConnected)
+            {
+                return;
+            }
+
+            int n = AllChannels.Length;
+            bool[] on = new bool[n];
+            float[] pressure = new float[n];
+            float[] speed = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                on[i] = true;
+                pressure[i] = intensity;
+                speed[i] = 1f;
+            }
+
+            if (testRelease != null)
+            {
+                StopCoroutine(testRelease);
+            }
+            BTSend(haptics.HEXRPressure(AllChannels, on, pressure, speed));
+            testRelease = StartCoroutine(ReleaseAfter(holdSeconds));
+        }
+
+        private IEnumerator ReleaseAfter(float seconds)
+        {
+            yield return new WaitForSecondsRealtime(seconds);
+            testRelease = null;
             ReleaseChannels(AllChannels);
         }
 

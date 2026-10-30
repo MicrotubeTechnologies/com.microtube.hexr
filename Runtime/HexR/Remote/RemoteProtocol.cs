@@ -34,6 +34,7 @@ namespace HexR
         public const string Ping = "ping";
         public const string Glove = "glove";
         public const string Release = "release";
+        public const string Trigger = "trigger";
         public const string Scene = "scene";
         public const string Command = "command";
         public const string Stream = "stream";
