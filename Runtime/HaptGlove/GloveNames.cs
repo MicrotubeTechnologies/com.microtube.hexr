@@ -7,7 +7,7 @@ namespace HaptGlove
     ///
     /// Every left glove advertises the same name, and so does every right one, so the only thing
     /// that tells two arm modules apart is the address, which nobody can remember. This turns the
-    /// address into two words, an adjective and an animal ("Fiery Panther"), the same way
+    /// address into an adjective, an animal and a number ("Fiery Panther 3"), the same way
     /// everywhere: every HexR app and every HEXR Companion (desktop hexr/glovenames.py, Android
     /// GloveNames.kt) names the same module the same, with nothing shared between them and nothing
     /// to set up.
@@ -15,10 +15,12 @@ namespace HaptGlove
     /// The recipe:
     ///  1. the address's hex digits, upper case, nothing else ("D4:3D:39:A1:B2:C3" -> "D43D39A1B2C3");
     ///  2. their FNV-1a 32-bit hash (offset basis 2166136261, prime 16777619, over the ASCII bytes);
-    ///  3. adjective = Adjectives[hash % 64], animal = Animals[(hash >> 6) % 64].
+    ///  3. adjective = Adjectives[hash % 64], animal = Animals[(hash >> 6) % 64],
+    ///     number = (hash >> 12) % 10 + 1;
+    ///  4. "Adjective Animal N" in English, 形容词动物N号 in Chinese.
     /// The lists are part of the recipe: never reorder or change an entry, or every module gets a
-    /// new name. GloveNamesTests holds the reference names all three are tested against. 4096
-    /// names: two modules sharing one is possible but rare.
+    /// new name. GloveNamesTests holds the reference names all three are tested against. 40960
+    /// names: about a 0.1% chance that 10 modules have two alike, 3% for 50.
     /// </summary>
     public static class GloveNames
     {
@@ -63,7 +65,7 @@ namespace HaptGlove
             { "Walrus", "海象" }, { "Whale", "鲸鱼" }, { "Wolf", "狼" }, { "Yak", "牦牛" },
         };
 
-        /// <summary>The arm module's own name, from its address: "Fiery Panther", or "火焰黑豹" in Chinese. Empty for no address.</summary>
+        /// <summary>The arm module's own name, from its address: "Fiery Panther 3", or "火焰黑豹3号" in Chinese. Empty for no address.</summary>
         public static string For(string address, bool chinese = false)
         {
             if (string.IsNullOrEmpty(address))
@@ -88,7 +90,8 @@ namespace HaptGlove
             int column = chinese ? 1 : 0;
             string adjective = Adjectives[h % 64, column];
             string animal = Animals[(h >> 6) % 64, column];
-            return chinese ? adjective + animal : adjective + " " + animal;
+            uint number = (h >> 12) % 10 + 1;
+            return chinese ? adjective + animal + number + "号" : adjective + " " + animal + " " + number;
         }
     }
 }

@@ -488,7 +488,7 @@ namespace HexR
         }
 
         /// <summary>
-        /// "Left", or "Left · Fiery Panther" once a module has connected: the hand, and which arm module
+        /// "Left", or "Left · Fiery Panther 3" once a module has connected: the hand, and which arm module
         /// it is (<see cref="GloveNames"/>), the name the HEXR Companion shows for it too.
         /// </summary>
         public string HandLabel(HaptGloveHandler.HandType hand)

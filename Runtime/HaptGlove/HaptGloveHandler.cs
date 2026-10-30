@@ -367,7 +367,7 @@ namespace HaptGlove
         public string GetRememberedDeviceId() => rememberedDeviceId;
 
         /// <summary>
-        /// This arm module's own name, from its address ("Fiery Panther"): the one every HexR app and
+        /// This arm module's own name, from its address ("Fiery Panther 3"): the one every HexR app and
         /// HEXR Companion gives it (see <see cref="GloveNames"/>). Empty until a module has connected.
         /// </summary>
         public string GloveName => GloveNames.For(rememberedDeviceId);
