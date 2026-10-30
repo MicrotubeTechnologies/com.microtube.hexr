@@ -372,6 +372,7 @@ The controller is the HexR Tester:
 | Allow Glove Control | on | Connect, disconnect and release the gloves from the phone |
 | Allow Video | on | Let the phone ask to share the view. The wearer still accepts it in the headset each time. |
 | Expose Scenes | off | Show the phone your build scenes and let it switch between them (off, like the floating menu's scene switcher) |
+| Allow Recenter | on | Let the phone put the wearer back on the scene's starting spot, facing its front, by moving the camera rig (0.10.6 and later). `HexRRecenter.Recentered` fires after, for anything that floats in front of the wearer. |
 | Video Width, Height | 1024 × 1024 | Encoded size. Quest's view is square, so a square size wastes nothing. |
 | Video Bitrate Kbps | 4000 | |
 | Video Fps | 30 | |

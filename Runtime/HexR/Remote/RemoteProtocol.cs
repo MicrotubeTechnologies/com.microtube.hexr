@@ -37,6 +37,7 @@ namespace HexR
         public const string Scene = "scene";
         public const string Command = "command";
         public const string Stream = "stream";
+        public const string Recenter = "recenter";
         public const string Status = "status";
         public const string Error = "error";
         public const string Announce = "announce";
@@ -239,6 +240,9 @@ namespace HexR
 
         /// <summary>The last nearby glove search. Headsets before 0.10.6 do not send it, and cannot search.</summary>
         public RemoteGloveSearch gloveSearch = new RemoteGloveSearch();
+
+        /// <summary>A phone may recenter the wearer. Headsets before 0.10.6 do not send it, and cannot.</summary>
+        public bool allowRecenter;
     }
 
     /// <summary>A search for every glove in range, so one can be connected by address.</summary>

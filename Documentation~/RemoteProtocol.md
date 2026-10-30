@@ -65,6 +65,7 @@ fields mean "not given" (`index` defaults to -1).
 | scene | `{"type":"scene","index":2}` | Load build scene 2 (only if the app exposes scenes) |
 | command | `{"type":"command","id":"reset"}` | Run a command the app registered |
 | stream | `{"type":"stream","action":"start"}` | Ask the wearer to share the view; `"stop"` ends sharing |
+| recenter | `{"type":"recenter"}` | `HexRRecenter.Recenter()`: the wearer back on the scene's starting spot, facing its front (0.10.6 and later, if the app allows it) |
 
 A request that does nothing (connect on a glove already connecting, disconnect on one already
 off) is not an error. A request that cannot be done gets an error line. The headset drops a
@@ -93,7 +94,7 @@ can tell a sleeping headset (`"paused":true`) from a vanished one (nothing for 4
 line:
 
 ```json
-{"type":"status","protocol":1,"id":"q3-1","name":"Quest 3","model":"Oculus Quest 3","platform":"quest","app":"HexR Demo","appVersion":"1.2","hexrVersion":"0.10.0","paused":false,"headsetBatteryPct":71,"scene":{"index":1,"name":"Hospital Tutorial"},"scenes":[{"index":0,"name":"Basic Tutorial"},{"index":1,"name":"Hospital Tutorial"}],"gloves":[{"hand":"left","state":"connected","message":"Connected","batteryPct":83,"pressureDeciKPa":[10,0,0,0,0,0,452],"savedAddress":"D4:3D:39:A1:B2:C3"},{"hand":"right","state":"disconnected","message":"","batteryPct":-1,"pressureDeciKPa":[],"savedAddress":""}],"stream":{"state":"live","port":47802,"width":1024,"height":1024,"viewers":1,"message":"","audio":{"state":"live","port":47803,"sampleRate":48000,"channels":2,"message":""}},"commands":[{"id":"reset","label":"Reset demo"}],"allowGloveControl":true,"allowVideo":true,"exposeScenes":true,"controllers":2,"haptics":true,"clockUs":1791966541289123,"gloveSearch":{"state":"done","message":"","found":[{"address":"D4:3D:39:D4:E5:F6","name":"HaptGloveAR Right","hand":"right","rssi":-48}]}}
+{"type":"status","protocol":1,"id":"q3-1","name":"Quest 3","model":"Oculus Quest 3","platform":"quest","app":"HexR Demo","appVersion":"1.2","hexrVersion":"0.10.0","paused":false,"headsetBatteryPct":71,"scene":{"index":1,"name":"Hospital Tutorial"},"scenes":[{"index":0,"name":"Basic Tutorial"},{"index":1,"name":"Hospital Tutorial"}],"gloves":[{"hand":"left","state":"connected","message":"Connected","batteryPct":83,"pressureDeciKPa":[10,0,0,0,0,0,452],"savedAddress":"D4:3D:39:A1:B2:C3"},{"hand":"right","state":"disconnected","message":"","batteryPct":-1,"pressureDeciKPa":[],"savedAddress":""}],"stream":{"state":"live","port":47802,"width":1024,"height":1024,"viewers":1,"message":"","audio":{"state":"live","port":47803,"sampleRate":48000,"channels":2,"message":""}},"commands":[{"id":"reset","label":"Reset demo"}],"allowGloveControl":true,"allowVideo":true,"exposeScenes":true,"controllers":2,"haptics":true,"clockUs":1791966541289123,"gloveSearch":{"state":"done","message":"","found":[{"address":"D4:3D:39:D4:E5:F6","name":"HaptGloveAR Right","hand":"right","rssi":-48}]},"allowRecenter":true}
 ```
 
 - `gloves` always has left then right. `state` is `connected`, `connecting`, `disconnected`, or
@@ -107,6 +108,8 @@ line:
   `hand` from the advertised name (empty when the name does not say) and `rssi` in dBm (0 when
   unknown). A glove already connected to another headset usually stops advertising, so it is not
   listed. Headsets before 0.10.6 do not send it and cannot search.
+- `allowRecenter` says the app takes `recenter`. Headsets before 0.10.6 do not send it, and a
+  phone reads it missing as false.
 - `pressureDeciKPa`: gauge pressure in tenths of a kPa, thumb, index, middle, ring, pinky, palm,
   then the pump's source tank (the firmware's channel order). Empty unless connected. The raw
   reading is converted the same way the HexR Tester converts it over Bluetooth

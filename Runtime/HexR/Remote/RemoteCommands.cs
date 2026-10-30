@@ -22,6 +22,10 @@ namespace HexR
         public bool AllowGloveControl = true;
         public bool AllowVideo = true;
         public bool ExposeScenes;
+        public bool AllowRecenter = true;
+
+        /// <summary>Puts the wearer back on the scene's starting spot: null, or why it could not.</summary>
+        public Func<string> Recenter = HexRRecenter.Recenter;
 
         public RemoteCommands(Func<HexRManager> manager, IRemoteStream stream, Func<int> sceneCount, Action<int> loadScene)
         {
@@ -45,6 +49,8 @@ namespace HexR
                     return Command(request);
                 case RemoteProtocol.Stream:
                     return Stream(request);
+                case RemoteProtocol.Recenter:
+                    return AllowRecenter ? Recenter() : "This app does not let a phone recenter the wearer.";
                 default:
                     return "This headset does not know the request \"" + request.type + "\".";
             }

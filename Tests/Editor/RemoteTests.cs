@@ -44,7 +44,8 @@ namespace HexR.Tests
             "\"commands\":[{\"id\":\"reset\",\"label\":\"Reset demo\"}]," +
             "\"allowGloveControl\":true,\"allowVideo\":true,\"exposeScenes\":true,\"controllers\":2," +
             "\"haptics\":true,\"clockUs\":1791966541289123," +
-            "\"gloveSearch\":{\"state\":\"done\",\"message\":\"\",\"found\":[{\"address\":\"D4:3D:39:D4:E5:F6\",\"name\":\"HaptGloveAR Right\",\"hand\":\"right\",\"rssi\":-48}]}}";
+            "\"gloveSearch\":{\"state\":\"done\",\"message\":\"\",\"found\":[{\"address\":\"D4:3D:39:D4:E5:F6\",\"name\":\"HaptGloveAR Right\",\"hand\":\"right\",\"rssi\":-48}]}," +
+            "\"allowRecenter\":true}";
 
         // A haptics line: the right index fingertip starting to press at 80% (HexR Companion parses it).
         private const string ReferenceHapticsLine =
@@ -294,6 +295,45 @@ namespace HexR.Tests
             Assert.IsNull(HexRManager.HandFromName(null));
         }
 
+        // ---- recenter ----------------------------------------------------------------------------
+
+        [Test]
+        public void Recenter_RunsWhenAllowed_AndSaysWhyWhenNot()
+        {
+            int recentered = 0;
+            commands.Recenter = () => { recentered++; return null; };
+            Assert.IsNull(Run("{\"type\":\"recenter\"}"));
+            Assert.AreEqual(1, recentered);
+
+            commands.AllowRecenter = false;
+            StringAssert.Contains("recenter", Run("{\"type\":\"recenter\"}"));
+            Assert.AreEqual(1, recentered);
+        }
+
+        [Test]
+        public void Recenter_PutsTheHeadOverTheStartingSpot_FacingItsFront()
+        {
+            GameObject cameraRig = rig.Make("Rig");
+            GameObject head = rig.Make("Main Camera");
+            head.tag = "MainCamera";
+            head.AddComponent<Camera>();
+            head.transform.SetParent(cameraRig.transform, false);
+            cameraRig.transform.SetPositionAndRotation(new Vector3(2f, 0f, 3f), Quaternion.Euler(0f, 90f, 0f));
+            HexRRecenter.Recenter();   // remembers this as the start
+
+            // The wearer walks off and turns round.
+            head.transform.localPosition = new Vector3(1.5f, 1.7f, -2f);
+            head.transform.localRotation = Quaternion.Euler(10f, 150f, 0f);
+
+            Assert.IsNull(HexRRecenter.Recenter());
+            Vector3 p = head.transform.position;
+            Assert.AreEqual(2f, p.x, 1e-3f);
+            Assert.AreEqual(3f, p.z, 1e-3f);
+            Assert.AreEqual(1.7f, p.y, 1e-3f);
+            Vector3 forward = Vector3.ProjectOnPlane(head.transform.forward, Vector3.up);
+            Assert.AreEqual(0f, Mathf.DeltaAngle(Quaternion.LookRotation(forward).eulerAngles.y, 90f), 1e-2f);
+        }
+
         // ---- status ------------------------------------------------------------------------------
 
         [Test]
@@ -397,6 +437,7 @@ namespace HexR.Tests
                         new RemoteNearbyGlove { address = "D4:3D:39:D4:E5:F6", name = "HaptGloveAR Right", hand = "right", rssi = -48 },
                     },
                 },
+                allowRecenter = true,
             };
         }
 

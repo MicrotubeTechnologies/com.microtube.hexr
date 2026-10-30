@@ -38,6 +38,9 @@ namespace HexR
         [Tooltip("Show the phone this app's build scenes and let it switch between them. Off by default, like the floating menu's scene switcher.")]
         public bool exposeScenes;
 
+        [Tooltip("Let the phone recenter the wearer: back on the scene's starting spot, facing its front.")]
+        public bool allowRecenter = true;
+
         [Header("Sharing the view")]
         [Tooltip("Encoded size. Quest's compositor delivers a square view, so a square size wastes nothing. Rounded to a multiple of 16.")]
         public int videoWidth = 1024;
@@ -326,6 +329,7 @@ namespace HexR
             handler.AllowGloveControl = allowGloveControl;
             handler.AllowVideo = allowVideo;
             handler.ExposeScenes = exposeScenes;
+            handler.AllowRecenter = allowRecenter;
 
             // A handful per frame is plenty for a person tapping a phone, and bounds the frame cost
             // if something floods the port.
@@ -456,6 +460,7 @@ namespace HexR
                 haptics = true,
                 clockUs = RemoteClock.NowUs(),
                 gloveSearch = RemoteCommands.GloveSearchStatus(ResolveManager()),
+                allowRecenter = allowRecenter,
             };
 
             server.PublishStatus(RemoteProtocol.ToLine(status));
