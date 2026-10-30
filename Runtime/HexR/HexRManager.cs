@@ -561,6 +561,11 @@ namespace HexR
             return permission.EndsWith("ACCESS_FINE_LOCATION") ? "Location" : "Bluetooth";
         }
 
+        // When each permission was last asked for and answered, so a refusal is not asked again
+        // straight away (see ConnectWhenPermitted).
+        private static readonly Dictionary<string, float> lastPermissionAsk = new Dictionary<string, float>();
+        private const float PermissionAskAgainSeconds = 60f;
+
         private IEnumerator ConnectWhenPermitted(HaptGloveHandler.HandType hand)
         {
             // One frame first, on every platform. A Connect from another component's Start can
@@ -577,16 +582,26 @@ namespace HexR
                     continue;
                 }
 
-                UnityEngine.Android.Permission.RequestUserPermission(permission);
-
-                // No completion callback is guaranteed on every device/runtime combination,
-                // so poll for the answer instead, with a ceiling so a dialog the user never
-                // answers can't wedge the connect slot shut forever.
-                float deadline = Time.unscaledTime + 60f;
-                while (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(permission)
-                    && Time.unscaledTime < deadline)
+                // Asked and refused (or dismissed) a moment ago: do not put the dialog up again.
+                // An app retrying its connect every few seconds otherwise brought the prompt back
+                // every few seconds, which is what wearers on PICO kept seeing. A press a minute
+                // later may ask again.
+                bool askedJustNow = lastPermissionAsk.TryGetValue(permission, out float askedAt)
+                    && Time.unscaledTime - askedAt < PermissionAskAgainSeconds;
+                if (!askedJustNow)
                 {
-                    yield return null;
+                    UnityEngine.Android.Permission.RequestUserPermission(permission);
+
+                    // No completion callback is guaranteed on every device/runtime combination,
+                    // so poll for the answer instead, with a ceiling so a dialog the user never
+                    // answers can't wedge the connect slot shut forever.
+                    float deadline = Time.unscaledTime + 60f;
+                    while (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(permission)
+                        && Time.unscaledTime < deadline)
+                    {
+                        yield return null;
+                    }
+                    lastPermissionAsk[permission] = Time.unscaledTime;
                 }
 
                 if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(permission))
