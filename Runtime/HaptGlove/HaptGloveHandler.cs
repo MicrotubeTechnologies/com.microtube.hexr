@@ -394,6 +394,133 @@ namespace HaptGlove
         }
         #endregion
 
+        #region Nearby Search
+        /// <summary>One glove a nearby search found.</summary>
+        public struct NearbyDevice
+        {
+            public string address;
+            public string name;
+
+            /// <summary>Signal strength in dBm, closer to 0 is nearer. 0 when the plugin did not say.</summary>
+            public int rssi;
+        }
+
+        /// <summary>
+        /// Raised on Unity's thread when a search started by <see cref="SearchNearby"/> ends: the
+        /// gloves found, nearest first, and null on success or the reason it failed.
+        /// </summary>
+        public event Action<List<NearbyDevice>, string> NearbySearchEnded;
+
+        /// <summary>True while a <see cref="SearchNearby"/> scan is running on this handler.</summary>
+        public bool IsSearchingNearby => searchingNearby;
+
+        private bool searchingNearby;
+        private Coroutine nearbySearchTimeout;
+        private const float NearbySearchTimeoutSeconds = 20f;
+
+        /// <summary>
+        /// Scans for every glove in range and reports them through <see cref="NearbySearchEnded"/>,
+        /// without connecting to any. This is how one physical glove is picked out when several
+        /// are switched on: search, then <see cref="ConnectToDevice"/> the address wanted. Uses
+        /// this handler's radio slot, so it is refused while this glove is connected or connecting.
+        /// Returns false, with the reason, when it could not start.
+        /// </summary>
+        public bool SearchNearby(out string error)
+        {
+            error = null;
+            if (BuildPlatform != TargetPlatform.Android || btHelper == null)
+            {
+                error = "Searching for gloves needs the headset's Bluetooth.";
+                return false;
+            }
+            if (bleConnected || IsConnecting)
+            {
+                error = "The " + whichHand + " glove is " + (bleConnected ? "connected" : "connecting") + ".";
+                return false;
+            }
+            if (searchingNearby)
+            {
+                return true;
+            }
+
+            searchingNearby = true;
+            BleLog("searching for every glove nearby (8s scan, no connect)");
+            btText = "Searching for gloves nearby...";
+            nearbySearchTimeout = StartCoroutine(NearbySearchTimeout());
+            PluginScan(
+                started =>
+                {
+                    if (!started)
+                    {
+                        EndNearbySearch(null, "Bluetooth is busy with another glove. Try again in a few seconds.");
+                    }
+                },
+                e => EndNearbySearch(null, "The Bluetooth scan failed: " + e.Message));
+            return true;
+        }
+
+        private IEnumerator NearbySearchTimeout()
+        {
+            yield return new WaitForSecondsRealtime(NearbySearchTimeoutSeconds);
+            nearbySearchTimeout = null;
+            EndNearbySearch(null, "The search did not finish. Try again.");
+        }
+
+        // Called from OnScanEnded in place of the connect that would otherwise follow.
+        private void FinishNearbySearch(LinkedList<BluetoothDevice> devices)
+        {
+            Dictionary<string, int> strengths = PluginDeviceCache.ReadSignalStrengths();
+            var found = new List<NearbyDevice>();
+            var seen = new HashSet<string>();
+            if (devices != null)
+            {
+                foreach (BluetoothDevice device in devices)
+                {
+                    string address = device.DeviceAddress;
+                    if (string.IsNullOrEmpty(address) || !IsGloveName(device.DeviceName) || !seen.Add(address))
+                    {
+                        continue;
+                    }
+                    strengths.TryGetValue(address, out int rssi);
+                    found.Add(new NearbyDevice { address = address, name = device.DeviceName, rssi = rssi });
+                }
+            }
+
+            // Nearest first; an unknown strength (0) last.
+            found.Sort((a, b) => (b.rssi == 0 ? int.MinValue : b.rssi).CompareTo(a.rssi == 0 ? int.MinValue : a.rssi));
+            BleLog("nearby search found " + found.Count + " glove(s)");
+            EndNearbySearch(found, null);
+        }
+
+        private void EndNearbySearch(List<NearbyDevice> found, string error)
+        {
+            if (!searchingNearby)
+            {
+                return;
+            }
+            searchingNearby = false;
+            if (nearbySearchTimeout != null)
+            {
+                StopCoroutine(nearbySearchTimeout);
+                nearbySearchTimeout = null;
+            }
+            btText = error ?? ("Found " + found.Count + " glove(s) nearby.");
+            NearbySearchEnded?.Invoke(found ?? new List<NearbyDevice>(), error);
+        }
+
+        /// <summary>
+        /// Whether an advertised name is a HexR glove's: the stock "HaptGloveAR Left/Right", anything
+        /// with HexR or HaptGlove in it, or this handler's custom name.
+        /// </summary>
+        public bool IsGloveName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            return name.IndexOf("HaptGlove", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("HexR", StringComparison.OrdinalIgnoreCase) >= 0
+                || (UseCustomDeviceName && name == OptionalCustomDeviceName);
+        }
+        #endregion
+
         public void BTDisconnection()
         {
             if (BuildPlatform == TargetPlatform.Android)
@@ -825,6 +952,13 @@ namespace HaptGlove
 
         private void OnScanEnded(BluetoothHelper helper, LinkedList<BluetoothDevice> devices)
         {
+            // A nearby search only reports what it saw; it never connects.
+            if (searchingNearby)
+            {
+                FinishNearbySearch(devices);
+                return;
+            }
+
             btText = "BLE Scan Ended";
 
             // The whole scan result, named. Until now nothing logged this, so a scan that ended

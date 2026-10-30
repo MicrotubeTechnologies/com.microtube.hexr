@@ -57,6 +57,12 @@ namespace HexR
         public const string Disconnected = "disconnected";
         public const string Missing = "missing";
 
+        // Nearby glove search states.
+        public const string SearchIdle = "idle";
+        public const string SearchSearching = "searching";
+        public const string SearchDone = "done";
+        public const string SearchFailed = "failed";
+
         /// <summary>
         /// Reads one control line. False, with a reason a person can act on, if it is not a request.
         /// </summary>
@@ -159,6 +165,9 @@ namespace HexR
         public string id = "";
         public int protocol;
         public string client = "";
+
+        /// <summary>A glove's Bluetooth address, for connecting that exact glove.</summary>
+        public string address = "";
     }
 
     /// <summary>Broadcast on UDP every two seconds so phones find the headset with no typing.</summary>
@@ -227,6 +236,34 @@ namespace HexR
 
         /// <summary>The headset's clock when this status was made, in µs: the clock haptics and video are stamped with.</summary>
         public long clockUs;
+
+        /// <summary>The last nearby glove search. Headsets before 0.10.6 do not send it, and cannot search.</summary>
+        public RemoteGloveSearch gloveSearch = new RemoteGloveSearch();
+    }
+
+    /// <summary>A search for every glove in range, so one can be connected by address.</summary>
+    [Serializable]
+    internal class RemoteGloveSearch
+    {
+        /// <summary>"idle", "searching", "done" or "failed".</summary>
+        public string state = RemoteProtocol.SearchIdle;
+        public string message = "";
+
+        /// <summary>Nearest first.</summary>
+        public RemoteNearbyGlove[] found = new RemoteNearbyGlove[0];
+    }
+
+    [Serializable]
+    internal class RemoteNearbyGlove
+    {
+        public string address = "";
+        public string name = "";
+
+        /// <summary>"left" or "right" from the advertised name, or empty when it does not say.</summary>
+        public string hand = "";
+
+        /// <summary>Signal strength in dBm, nearer 0 is closer; 0 when unknown.</summary>
+        public int rssi;
     }
 
     /// <summary>
@@ -281,6 +318,9 @@ namespace HexR
 
         /// <summary>Thumb, index, middle, ring, pinky, palm, then the pump's source tank.</summary>
         public int[] pressureDeciKPa = new int[0];
+
+        /// <summary>The glove this hand is saved to and connects to only; empty when it takes the first it finds.</summary>
+        public string savedAddress = "";
     }
 
     [Serializable]

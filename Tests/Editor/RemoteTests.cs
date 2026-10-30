@@ -26,6 +26,9 @@ namespace HexR.Tests
         private const string CommandLine = "{\"type\":\"command\",\"id\":\"reset\"}";
         private const string StreamStartLine = "{\"type\":\"stream\",\"action\":\"start\"}";
         private const string HelloLine = "{\"type\":\"hello\",\"protocol\":1,\"client\":\"HexR Tester\"}";
+        private const string SearchLine = "{\"type\":\"glove\",\"action\":\"search\"}";
+        private const string ConnectAddressLine = "{\"type\":\"glove\",\"action\":\"connect\",\"hand\":\"left\",\"address\":\"D4:3D:39:A1:B2:C3\"}";
+        private const string ForgetLeftLine = "{\"type\":\"glove\",\"action\":\"forget\",\"hand\":\"left\"}";
 
         // What the headset sends for ReferenceStatus() below (RemoteProtocolTest.kt parses it).
         private const string ReferenceStatusLine =
@@ -34,13 +37,14 @@ namespace HexR.Tests
             "\"paused\":false,\"headsetBatteryPct\":71," +
             "\"scene\":{\"index\":1,\"name\":\"Hospital Tutorial\"}," +
             "\"scenes\":[{\"index\":0,\"name\":\"Basic Tutorial\"},{\"index\":1,\"name\":\"Hospital Tutorial\"}]," +
-            "\"gloves\":[{\"hand\":\"left\",\"state\":\"connected\",\"message\":\"Connected\",\"batteryPct\":83,\"pressureDeciKPa\":[10,0,0,0,0,0,452]}," +
-            "{\"hand\":\"right\",\"state\":\"disconnected\",\"message\":\"\",\"batteryPct\":-1,\"pressureDeciKPa\":[]}]," +
+            "\"gloves\":[{\"hand\":\"left\",\"state\":\"connected\",\"message\":\"Connected\",\"batteryPct\":83,\"pressureDeciKPa\":[10,0,0,0,0,0,452],\"savedAddress\":\"D4:3D:39:A1:B2:C3\"}," +
+            "{\"hand\":\"right\",\"state\":\"disconnected\",\"message\":\"\",\"batteryPct\":-1,\"pressureDeciKPa\":[],\"savedAddress\":\"\"}]," +
             "\"stream\":{\"state\":\"live\",\"port\":47802,\"width\":1024,\"height\":1024,\"viewers\":1,\"message\":\"\"," +
             "\"audio\":{\"state\":\"live\",\"port\":47803,\"sampleRate\":48000,\"channels\":2,\"message\":\"\"}}," +
             "\"commands\":[{\"id\":\"reset\",\"label\":\"Reset demo\"}]," +
             "\"allowGloveControl\":true,\"allowVideo\":true,\"exposeScenes\":true,\"controllers\":2," +
-            "\"haptics\":true,\"clockUs\":1791966541289123}";
+            "\"haptics\":true,\"clockUs\":1791966541289123," +
+            "\"gloveSearch\":{\"state\":\"done\",\"message\":\"\",\"found\":[{\"address\":\"D4:3D:39:D4:E5:F6\",\"name\":\"HaptGloveAR Right\",\"hand\":\"right\",\"rssi\":-48}]}}";
 
         // A haptics line: the right index fingertip starting to press at 80% (HexR Companion parses it).
         private const string ReferenceHapticsLine =
@@ -75,6 +79,8 @@ namespace HexR.Tests
         [TearDown]
         public void TearDown()
         {
+            rig.Left.ForgetDevice();
+            rig.Right.ForgetDevice();
             HexRRemote.UnregisterCommand("reset");
             HexRRemote.UnregisterCommand("boom");
             rig.Dispose();
@@ -105,6 +111,9 @@ namespace HexR.Tests
 
             Assert.IsTrue(RemoteProtocol.TryParse(HelloLine, out RemoteRequest hello, out _));
             Assert.AreEqual((1, "HexR Tester"), (hello.protocol, hello.client));
+
+            Assert.IsTrue(RemoteProtocol.TryParse(ConnectAddressLine, out RemoteRequest byAddress, out _));
+            Assert.AreEqual(("connect", "left", "D4:3D:39:A1:B2:C3"), (byAddress.action, byAddress.hand, byAddress.address));
         }
 
         [Test]
@@ -238,6 +247,53 @@ namespace HexR.Tests
             StringAssert.Contains("teleport", Run("{\"type\":\"teleport\"}"));
         }
 
+        // ---- picking one glove out of several ----------------------------------------------------
+
+        [Test]
+        public void ConnectWithAnAddress_SavesThatGlove_AndStartsConnecting()
+        {
+            Assert.IsNull(Run(ConnectAddressLine));
+            Assert.AreEqual("D4:3D:39:A1:B2:C3", rig.Manager.SavedGloveAddress(HaptGloveHandler.HandType.Left));
+            Assert.IsTrue(rig.Manager.IsConnecting(HaptGloveHandler.HandType.Left));
+            Assert.AreEqual("", rig.Manager.SavedGloveAddress(HaptGloveHandler.HandType.Right));
+        }
+
+        [Test]
+        public void Forget_ClearsTheSavedGlove()
+        {
+            rig.Left.RememberDevice("D4:3D:39:A1:B2:C3");
+            Assert.IsNull(Run(ForgetLeftLine));
+            Assert.AreEqual("", rig.Manager.SavedGloveAddress(HaptGloveHandler.HandType.Left));
+        }
+
+        [Test]
+        public void Search_WithBothGlovesConnected_IsRefused_WithWhatToDo()
+        {
+            rig.Left.bleConnected = true;
+            rig.Right.bleConnected = true;
+            StringAssert.Contains("Disconnect one", Run(SearchLine));
+            Assert.AreEqual(HexRManager.NearbySearchState.Idle, rig.Manager.NearbySearch);
+        }
+
+        [Test]
+        public void Search_WithoutTheHeadsetsBluetooth_FailsInTheStatus_WithTheReason()
+        {
+            // No Bluetooth helper in edit mode, as off the headset.
+            string error = Run(SearchLine);
+            Assert.IsNotNull(error);
+            RemoteGloveSearch search = RemoteCommands.GloveSearchStatus(rig.Manager);
+            Assert.AreEqual((RemoteProtocol.SearchFailed, error), (search.state, search.message));
+        }
+
+        [Test]
+        public void HandFromName_ReadsTheAdvertisedName()
+        {
+            Assert.AreEqual(HaptGloveHandler.HandType.Left, HexRManager.HandFromName("HaptGloveAR Left"));
+            Assert.AreEqual(HaptGloveHandler.HandType.Right, HexRManager.HandFromName("HexR 03 Right"));
+            Assert.IsNull(HexRManager.HandFromName("HexR 03"));
+            Assert.IsNull(HexRManager.HandFromName(null));
+        }
+
         // ---- status ------------------------------------------------------------------------------
 
         [Test]
@@ -256,6 +312,10 @@ namespace HexR.Tests
             CollectionAssert.AreEqual(new[] { 10, 0, 0, 0, 0, 0, 452 }, gloves[0].pressureDeciKPa);
             Assert.AreEqual(("right", RemoteProtocol.Disconnected, -1), (gloves[1].hand, gloves[1].state, gloves[1].batteryPct));
             Assert.IsEmpty(gloves[1].pressureDeciKPa);
+            Assert.AreEqual(("", ""), (gloves[0].savedAddress, gloves[1].savedAddress));
+
+            rig.Left.RememberDevice("D4:3D:39:A1:B2:C3");
+            Assert.AreEqual("D4:3D:39:A1:B2:C3", RemoteCommands.GloveStatus(rig.Manager)[0].savedAddress);
         }
 
         [Test]
@@ -313,6 +373,7 @@ namespace HexR.Tests
                     {
                         hand = "left", state = "connected", message = "Connected", batteryPct = 83,
                         pressureDeciKPa = new[] { 10, 0, 0, 0, 0, 0, 452 },
+                        savedAddress = "D4:3D:39:A1:B2:C3",
                     },
                     new RemoteGloveStatus { hand = "right", state = "disconnected" },
                 },
@@ -328,6 +389,14 @@ namespace HexR.Tests
                 controllers = 2,
                 haptics = true,
                 clockUs = 1791966541289123,
+                gloveSearch = new RemoteGloveSearch
+                {
+                    state = "done",
+                    found = new[]
+                    {
+                        new RemoteNearbyGlove { address = "D4:3D:39:D4:E5:F6", name = "HaptGloveAR Right", hand = "right", rssi = -48 },
+                    },
+                },
             };
         }
 

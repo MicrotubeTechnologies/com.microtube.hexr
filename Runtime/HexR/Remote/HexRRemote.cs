@@ -24,7 +24,7 @@ namespace HexR
     public class HexRRemote : MonoBehaviour
     {
         /// <summary>The package version this file shipped in, reported to phones. A test keeps it equal to package.json.</summary>
-        public const string HexRVersion = "0.10.5";
+        public const string HexRVersion = "0.10.6";
 
         public static HexRRemote Instance { get; private set; }
 
@@ -455,6 +455,7 @@ namespace HexR
                 controllers = server.ClientCount,
                 haptics = true,
                 clockUs = RemoteClock.NowUs(),
+                gloveSearch = RemoteCommands.GloveSearchStatus(ResolveManager()),
             };
 
             server.PublishStatus(RemoteProtocol.ToLine(status));

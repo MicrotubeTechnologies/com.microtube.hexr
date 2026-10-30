@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace HaptGlove
@@ -75,6 +76,49 @@ namespace HaptGlove
                     + "). A nameless device in it can make the next name lookup throw.");
             }
 #endif
+        }
+
+        /// <summary>
+        /// Signal strength (dBm) by address for the devices of the last scan, read from the
+        /// plugin's cache, whose entries carry the RSSI the scan heard them at. Empty off Android,
+        /// or if the plugin's cache holds no strengths. Never throws.
+        /// </summary>
+        public static Dictionary<string, int> ReadSignalStrengths()
+        {
+            var strengths = new Dictionary<string, int>();
+#if UNITY_ANDROID && !UNITY_EDITOR
+            try
+            {
+                using (AndroidJavaClass helper = new AndroidJavaClass(HelperClass))
+                using (AndroidJavaObject devices = helper.GetStatic<AndroidJavaObject>("sharedBleDevices"))
+                using (AndroidJavaObject it = devices.Call<AndroidJavaObject>("iterator"))
+                {
+                    while (it.Call<bool>("hasNext"))
+                    {
+                        using (AndroidJavaObject device = it.Call<AndroidJavaObject>("next"))
+                        {
+                            try
+                            {
+                                string address = device.Call<string>("getAddress");
+                                if (!string.IsNullOrEmpty(address))
+                                {
+                                    strengths[address] = device.Call<int>("getRssi");
+                                }
+                            }
+                            catch (Exception)
+                            {
+                                // An entry without a strength: left out, read as unknown.
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[HexR-BLE] Could not read signal strengths from the plugin's cache: " + e.Message);
+            }
+#endif
+            return strengths;
         }
     }
 }

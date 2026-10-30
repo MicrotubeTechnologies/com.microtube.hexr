@@ -337,6 +337,163 @@ namespace HexR
             return inFlight || queued || (handler != null && handler.IsConnecting);
         }
 
+        // ---- picking one glove out of several --------------------------------------------------
+        //
+        // Every left glove advertises the same name, and so does every right one, so with several
+        // switched on a plain Connect takes whichever answers first. A search lists them all by
+        // address; ConnectTo then connects that exact glove and saves it, and every later connect
+        // for that hand -- reconnects after a drop, the next app start -- goes to that address only.
+
+        public enum NearbySearchState { Idle, Searching, Done, Failed }
+
+        /// <summary>Where the last <see cref="SearchNearbyGloves"/> got to.</summary>
+        public NearbySearchState NearbySearch { get; private set; }
+
+        /// <summary>Why the last search failed, or empty.</summary>
+        public string NearbySearchMessage { get; private set; } = "";
+
+        /// <summary>What the last search found, nearest first.</summary>
+        public IReadOnlyList<HaptGloveHandler.NearbyDevice> NearbyGloves => nearbyGloves;
+
+        private List<HaptGloveHandler.NearbyDevice> nearbyGloves = new List<HaptGloveHandler.NearbyDevice>();
+        private HaptGloveHandler nearbySearcher;
+
+        /// <summary>
+        /// Lists every glove in range, by address, without connecting to any; the result lands in
+        /// <see cref="NearbyGloves"/> about 8 s later. Runs on a hand that is neither connected nor
+        /// connecting. Returns null once started, or the reason it could not start.
+        /// </summary>
+        public string SearchNearbyGloves()
+        {
+            if (NearbySearch == NearbySearchState.Searching)
+            {
+                return null;
+            }
+
+            HaptGloveHandler searcher = null;
+            string reason = "There is no glove handler on this rig.";
+            foreach (HaptGloveHandler.HandType hand in new[] { HaptGloveHandler.HandType.Left, HaptGloveHandler.HandType.Right })
+            {
+                HaptGloveHandler handler = HandlerFor(hand);
+                if (handler == null) continue;
+                if (IsConnected(hand) || IsConnecting(hand))
+                {
+                    reason = "Both gloves are connected or connecting. Disconnect one to search.";
+                    continue;
+                }
+                searcher = handler;
+                break;
+            }
+            if (searcher == null)
+            {
+                return reason;
+            }
+
+            if (nearbySearcher != null) nearbySearcher.NearbySearchEnded -= OnNearbySearchEnded;
+            nearbySearcher = searcher;
+            searcher.NearbySearchEnded += OnNearbySearchEnded;
+            NearbySearch = NearbySearchState.Searching;
+            NearbySearchMessage = "";
+            if (!searcher.SearchNearby(out string error))
+            {
+                searcher.NearbySearchEnded -= OnNearbySearchEnded;
+                nearbySearcher = null;
+                NearbySearch = NearbySearchState.Failed;
+                NearbySearchMessage = error;
+                return error;
+            }
+            return null;
+        }
+
+        private void OnNearbySearchEnded(List<HaptGloveHandler.NearbyDevice> found, string error)
+        {
+            if (nearbySearcher != null) nearbySearcher.NearbySearchEnded -= OnNearbySearchEnded;
+            nearbySearcher = null;
+            if (error != null)
+            {
+                NearbySearch = NearbySearchState.Failed;
+                NearbySearchMessage = error;
+                return;
+            }
+            nearbyGloves = found;
+            NearbySearch = NearbySearchState.Done;
+            NearbySearchMessage = "";
+        }
+
+        /// <summary>
+        /// "left" or "right" from a glove's advertised name, or null when the name does not say.
+        /// </summary>
+        public static HaptGloveHandler.HandType? HandFromName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return null;
+            bool left = name.IndexOf("Left", StringComparison.OrdinalIgnoreCase) >= 0;
+            bool right = name.IndexOf("Right", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (left == right) return null;
+            return left ? HaptGloveHandler.HandType.Left : HaptGloveHandler.HandType.Right;
+        }
+
+        /// <summary>
+        /// Connects that hand to the glove at this address and saves it, so the hand reconnects to
+        /// that glove only. A glove of the other hand is refused. Disconnects the hand's current
+        /// glove first if it is a different one; while a connect is under way, the next attempt goes
+        /// to the new address. Returns null, or the reason it was refused.
+        /// </summary>
+        public string ConnectTo(HaptGloveHandler.HandType hand, string address)
+        {
+            HaptGloveHandler handler = HandlerFor(hand);
+            if (handler == null)
+            {
+                return "This rig has no " + hand + " glove.";
+            }
+            if (string.IsNullOrEmpty(address))
+            {
+                return "Say which glove: an address from the search.";
+            }
+
+            foreach (HaptGloveHandler.NearbyDevice device in nearbyGloves)
+            {
+                if (device.address != address) continue;
+                HaptGloveHandler.HandType? named = HandFromName(device.name);
+                if (named.HasValue && named.Value != hand)
+                {
+                    return device.name + " is a " + named.Value + " glove, not a " + hand + " one.";
+                }
+            }
+
+            if (IsConnected(hand))
+            {
+                if (handler.GetRememberedDeviceId() == address)
+                {
+                    return null;
+                }
+                Disconnect(hand);
+            }
+
+            Debug.Log("[HexR] The " + hand + " glove is now " + address + ".");
+            handler.RememberDevice(address);
+            Connect(hand);
+            return null;
+        }
+
+        /// <summary>
+        /// Forgets the glove saved for that hand, so its next connect takes the first glove of that
+        /// hand it finds. Leaves a connected glove connected.
+        /// </summary>
+        public void ForgetGlove(HaptGloveHandler.HandType hand)
+        {
+            HaptGloveHandler handler = HandlerFor(hand);
+            if (handler == null) return;
+            Debug.Log("[HexR] Forgot the saved " + hand + " glove (" + handler.GetRememberedDeviceId() + ").");
+            handler.ForgetDevice();
+        }
+
+        /// <summary>The address saved for that hand, which it connects to; empty when none is.</summary>
+        public string SavedGloveAddress(HaptGloveHandler.HandType hand)
+        {
+            HaptGloveHandler handler = HandlerFor(hand);
+            return handler != null ? handler.GetRememberedDeviceId() ?? "" : "";
+        }
+
         private HaptGloveHandler HandlerFor(HaptGloveHandler.HandType hand)
         {
             return hand == HaptGloveHandler.HandType.Left ? leftHand : rightHand;

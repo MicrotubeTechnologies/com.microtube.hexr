@@ -34,7 +34,7 @@ Or add it to `Packages/manifest.json` directly:
 ```
 
 Pinning is optional: `main` is kept releasable, so the unpinned URL above always resolves
-the latest release. Append a tag (`#v0.10.5`) when a build has to stay reproducible.
+the latest release. Append a tag (`#v0.10.6`) when a build has to stay reproducible.
 
 Either way, UPM caches a git dependency by the ref it resolved, so an unpinned URL does not
 re-check on its own. To pull a newer `main`, use **Window → Package Manager →
@@ -164,6 +164,11 @@ to list them. `HaptGlove.Runtime` is different — it is an asmdef, so `HexR.Run
   8 s — giving up after about a minute and re-showing the panel. Retries are only ever
   scheduled from a definitive outcome, never from a timer guessing that an attempt has
   finished; that distinction is why an earlier attempt at auto-reconnect had to be reverted.
+- **A remembered glove is the only one that hand connects to.** Every left glove advertises the
+  same name, and so does every right one, so the first connect takes whichever answers first.
+  After that the hand connects by the saved address only, so with several kits switched on in
+  one room a headset keeps to its own gloves. To pick a glove out deliberately, search and
+  connect by address (below, and from HexR Remote).
 - **Only one hand scans at a time.** The plugin keeps its scanning flag and its discovered-
   device list in static fields shared by both hands, so two concurrent scans clear each
   other's results. A second connect request is queued and started when the first finishes.
@@ -310,7 +315,14 @@ on a connected glove they disconnect.
 The glove keeps its last command until it is told otherwise, so the package releases every
 channel when the app quits (stopping Play mode in the Editor included), when it pauses
 (`HaptGloveHandler.releaseWhenPaused`, on by default), and before any disconnect it makes.
-`HaptGloveHandler.ReleaseAllChannels()` does the same on demand. What no code on the headset
+`HaptGloveHandler.ReleaseAllChannels()` does the same on demand.
+
+To pick one glove out of several switched on at once (0.10.6 and later):
+`HexRManager.Instance.SearchNearbyGloves()` scans for about 8 s without connecting and fills
+`NearbyGloves` (address, advertised name, signal strength, nearest first);
+`ConnectTo(hand, address)` connects that exact glove and saves it for the hand; `ForgetGlove(hand)`
+clears the saved glove so the next connect takes the first it finds again. The search runs on a
+hand that is neither connected nor connecting. What no code on the headset
 can cover is the Bluetooth link dropping on its own; then the glove holds its last pressure
 until the arm module is switched off.
 

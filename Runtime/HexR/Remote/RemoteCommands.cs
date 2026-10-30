@@ -57,12 +57,18 @@ namespace HexR
                 return "This app does not let a phone connect its gloves.";
             }
 
+            HexRManager rig = manager();
+            if (request.action == "search")
+            {
+                // Every glove in range, for either hand; the result comes back in the status.
+                return rig == null ? "There is no HexR rig in this scene." : rig.SearchNearbyGloves();
+            }
+
             if (!RemoteProtocol.TryParseHand(request.hand, out HaptGloveHandler.HandType hand))
             {
                 return "Say which glove: \"left\" or \"right\".";
             }
 
-            HexRManager rig = manager();
             if (rig == null)
             {
                 return "There is no HexR rig in this scene.";
@@ -77,10 +83,20 @@ namespace HexR
             switch (request.action)
             {
                 case "connect":
+                    // With an address: that exact glove, saved for this hand from then on.
+                    if (!string.IsNullOrEmpty(request.address))
+                    {
+                        return rig.ConnectTo(hand, request.address);
+                    }
+
                     // Does nothing if already connected or connecting, so a double tap is harmless.
                     // It may put a Bluetooth permission prompt up in the headset first; the glove's
                     // status message tells the phone so.
                     rig.Connect(hand);
+                    return null;
+
+                case "forget":
+                    rig.ForgetGlove(hand);
                     return null;
 
                 case "disconnect":
@@ -99,7 +115,7 @@ namespace HexR
                     return null;
 
                 default:
-                    return "A glove request needs \"connect\" or \"disconnect\".";
+                    return "A glove request needs \"connect\", \"disconnect\", \"forget\" or \"search\".";
             }
         }
 
@@ -234,6 +250,7 @@ namespace HexR
                     ? RemoteProtocol.Connected
                     : rig.IsConnecting(hand) ? RemoteProtocol.Connecting : RemoteProtocol.Disconnected;
                 glove.message = handler.btText ?? "";
+                glove.savedAddress = rig.SavedGloveAddress(hand);
 
                 if (!connected)
                 {
@@ -259,6 +276,39 @@ namespace HexR
             }
 
             return gloves;
+        }
+
+        /// <summary>The rig's last nearby glove search, as the status reports it.</summary>
+        public static RemoteGloveSearch GloveSearchStatus(HexRManager rig)
+        {
+            RemoteGloveSearch search = new RemoteGloveSearch();
+            if (rig == null)
+            {
+                return search;
+            }
+
+            switch (rig.NearbySearch)
+            {
+                case HexRManager.NearbySearchState.Searching: search.state = RemoteProtocol.SearchSearching; break;
+                case HexRManager.NearbySearchState.Done: search.state = RemoteProtocol.SearchDone; break;
+                case HexRManager.NearbySearchState.Failed: search.state = RemoteProtocol.SearchFailed; break;
+            }
+            search.message = rig.NearbySearchMessage ?? "";
+
+            var found = new List<RemoteNearbyGlove>();
+            foreach (HaptGloveHandler.NearbyDevice device in rig.NearbyGloves)
+            {
+                HaptGloveHandler.HandType? hand = HexRManager.HandFromName(device.name);
+                found.Add(new RemoteNearbyGlove
+                {
+                    address = device.address ?? "",
+                    name = device.name ?? "",
+                    hand = hand.HasValue ? RemoteProtocol.HandName(hand.Value) : "",
+                    rssi = device.rssi,
+                });
+            }
+            search.found = found.ToArray();
+            return search;
         }
 
         private static HaptGloveHandler HandlerFor(HexRManager rig, HaptGloveHandler.HandType hand)

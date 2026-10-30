@@ -58,6 +58,9 @@ fields mean "not given" (`index` defaults to -1).
 | ping | `{"type":"ping"}` | Nothing; keeps the connection alive. Send every ~5 s |
 | glove | `{"type":"glove","action":"connect","hand":"left"}` | `HexRManager.Connect(Left)` |
 | glove | `{"type":"glove","action":"disconnect","hand":"right"}` | `HexRManager.Disconnect(Right)` |
+| glove | `{"type":"glove","action":"search"}` | `HexRManager.SearchNearbyGloves()`: every glove in range, reported in the status's `gloveSearch` (0.10.6 and later) |
+| glove | `{"type":"glove","action":"connect","hand":"left","address":"D4:3D:39:A1:B2:C3"}` | `HexRManager.ConnectTo(Left, address)`: that exact glove, saved for the hand (0.10.6 and later) |
+| glove | `{"type":"glove","action":"forget","hand":"left"}` | `HexRManager.ForgetGlove(Left)`: the hand takes the first glove it finds again (0.10.6 and later) |
 | release | `{"type":"release"}` | `ReleaseAllChannels()` on connected gloves; `"hand"` limits it to one |
 | scene | `{"type":"scene","index":2}` | Load build scene 2 (only if the app exposes scenes) |
 | command | `{"type":"command","id":"reset"}` | Run a command the app registered |
@@ -90,13 +93,20 @@ can tell a sleeping headset (`"paused":true`) from a vanished one (nothing for 4
 line:
 
 ```json
-{"type":"status","protocol":1,"id":"q3-1","name":"Quest 3","model":"Oculus Quest 3","platform":"quest","app":"HexR Demo","appVersion":"1.2","hexrVersion":"0.10.0","paused":false,"headsetBatteryPct":71,"scene":{"index":1,"name":"Hospital Tutorial"},"scenes":[{"index":0,"name":"Basic Tutorial"},{"index":1,"name":"Hospital Tutorial"}],"gloves":[{"hand":"left","state":"connected","message":"Connected","batteryPct":83,"pressureDeciKPa":[10,0,0,0,0,0,452]},{"hand":"right","state":"disconnected","message":"","batteryPct":-1,"pressureDeciKPa":[]}],"stream":{"state":"live","port":47802,"width":1024,"height":1024,"viewers":1,"message":"","audio":{"state":"live","port":47803,"sampleRate":48000,"channels":2,"message":""}},"commands":[{"id":"reset","label":"Reset demo"}],"allowGloveControl":true,"allowVideo":true,"exposeScenes":true,"controllers":2,"haptics":true,"clockUs":1791966541289123}
+{"type":"status","protocol":1,"id":"q3-1","name":"Quest 3","model":"Oculus Quest 3","platform":"quest","app":"HexR Demo","appVersion":"1.2","hexrVersion":"0.10.0","paused":false,"headsetBatteryPct":71,"scene":{"index":1,"name":"Hospital Tutorial"},"scenes":[{"index":0,"name":"Basic Tutorial"},{"index":1,"name":"Hospital Tutorial"}],"gloves":[{"hand":"left","state":"connected","message":"Connected","batteryPct":83,"pressureDeciKPa":[10,0,0,0,0,0,452],"savedAddress":"D4:3D:39:A1:B2:C3"},{"hand":"right","state":"disconnected","message":"","batteryPct":-1,"pressureDeciKPa":[],"savedAddress":""}],"stream":{"state":"live","port":47802,"width":1024,"height":1024,"viewers":1,"message":"","audio":{"state":"live","port":47803,"sampleRate":48000,"channels":2,"message":""}},"commands":[{"id":"reset","label":"Reset demo"}],"allowGloveControl":true,"allowVideo":true,"exposeScenes":true,"controllers":2,"haptics":true,"clockUs":1791966541289123,"gloveSearch":{"state":"done","message":"","found":[{"address":"D4:3D:39:D4:E5:F6","name":"HaptGloveAR Right","hand":"right","rssi":-48}]}}
 ```
 
 - `gloves` always has left then right. `state` is `connected`, `connecting`, `disconnected`, or
   `missing` (the rig has no handler for that hand). `message` is the handler's own status text,
   e.g. a Bluetooth permission prompt waiting in the headset.
 - `batteryPct` is -1 until the glove has reported its battery.
+- `savedAddress` is the glove that hand is saved to: it connects to that address only. Empty when
+  it takes the first glove of its hand it finds. Headsets before 0.10.6 do not send it.
+- `gloveSearch` is the last nearby search: `state` is `idle`, `searching` (about 8 s), `done` or
+  `failed` (`message` says why), and `found` lists every glove in range, nearest first, with its
+  `hand` from the advertised name (empty when the name does not say) and `rssi` in dBm (0 when
+  unknown). A glove already connected to another headset usually stops advertising, so it is not
+  listed. Headsets before 0.10.6 do not send it and cannot search.
 - `pressureDeciKPa`: gauge pressure in tenths of a kPa, thumb, index, middle, ring, pinky, palm,
   then the pump's source tank (the firmware's channel order). Empty unless connected. The raw
   reading is converted the same way the HexR Tester converts it over Bluetooth
