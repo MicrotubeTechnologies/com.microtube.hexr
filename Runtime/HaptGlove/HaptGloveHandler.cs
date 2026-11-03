@@ -933,7 +933,13 @@ namespace HaptGlove
                 bool started;
                 try
                 {
-                    started = helper.ScanNearbyDevices();
+                    // On Android 12+ the plugin would put up the system "choose a device to be
+                    // managed" chooser here instead of scanning (see PluginDeviceCache), on
+                    // every connect, retry and search. Run its scan without that detour.
+                    bool? direct = PluginDeviceCache.ScanWouldOpenChooserNeedlessly()
+                        ? PluginDeviceCache.StartScanWithoutChooser(helper.getId())
+                        : null;
+                    started = direct ?? helper.ScanNearbyDevices();
                 }
                 catch (Exception e)
                 {

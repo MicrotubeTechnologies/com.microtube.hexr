@@ -79,6 +79,180 @@ namespace HaptGlove
         }
 
         /// <summary>
+        /// Whether the plugin's <c>scanNearbyDevices()</c> would show Android's "choose a device to
+        /// be managed by ..." chooser instead of scanning, on Android 12 or newer, where a real
+        /// scan works anyway. Never throws.
+        /// </summary>
+        /// <remarks>
+        /// The plugin only scans when location permission is granted and the GPS or network
+        /// location provider is on. Otherwise it opens the Companion Device Manager chooser, which
+        /// on every scan asks the wearer to let the app manage some nearby device (often not a
+        /// glove). That gate dates from Android 6-11, when a BLE scan needed location. From
+        /// Android 12 a scan needs BLUETOOTH_SCAN, which HexRManager asks for, and not location,
+        /// which nothing asks for there. So on PICO 4 Ultra (Android 14) the gate always failed and
+        /// every connect, retry and nearby search put the chooser up. Below Android 12 the chooser
+        /// stays: with location off, a scan there would find nothing.
+        /// </remarks>
+        public static bool ScanWouldOpenChooserNeedlessly()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            try
+            {
+                int sdk;
+                using (AndroidJavaClass version = new AndroidJavaClass("android.os.Build$VERSION"))
+                {
+                    sdk = version.GetStatic<int>("SDK_INT");
+                }
+                if (sdk < 31)
+                {
+                    return false;
+                }
+
+                using (AndroidJavaClass player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+                using (AndroidJavaObject activity = player.GetStatic<AndroidJavaObject>("currentActivity"))
+                {
+                    // Without BLUETOOTH_SCAN a scan finds nothing either way; leave the plugin be.
+                    if (activity.Call<int>("checkSelfPermission", "android.permission.BLUETOOTH_SCAN") != 0)
+                    {
+                        return false;
+                    }
+
+                    // The plugin's own test, in its order.
+                    bool permitted = activity.Call<int>("checkSelfPermission", "android.permission.ACCESS_FINE_LOCATION") == 0
+                        && activity.Call<int>("checkSelfPermission", "android.permission.ACCESS_COARSE_LOCATION") == 0;
+                    if (!permitted)
+                    {
+                        return true;
+                    }
+
+                    using (AndroidJavaObject location = activity.Call<AndroidJavaObject>("getSystemService", "location"))
+                    {
+                        return !ProviderOn(location, "gps") && !ProviderOn(location, "network");
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[HexR-BLE] Could not tell whether the Bluetooth plugin would open the device chooser ("
+                    + e.Message + "). Leaving the scan to the plugin.");
+                return false;
+            }
+#else
+            return false;
+#endif
+        }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private static bool ProviderOn(AndroidJavaObject location, string provider)
+        {
+            try
+            {
+                return location != null && location.Call<bool>("isProviderEnabled", provider);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+#endif
+
+        /// <summary>
+        /// Runs the plugin's own 8 s BLE scan for the helper with this id, skipping the location
+        /// gate in front of it (see <see cref="ScanWouldOpenChooserNeedlessly"/>): what
+        /// <c>scanNearbyDevices()</c> does once that gate passes, with the plugin's own scan callback
+        /// and end-of-scan runnable, so the results, the device cache and OnScanEnded come back
+        /// exactly as from a plugin scan. Call on the Android UI thread, like the plugin's scan.
+        /// Returns true when the scan started, false when a scan is already running (as the plugin
+        /// does), and null when the helper could not be driven, so the caller can fall back to the
+        /// plugin. Throws when Bluetooth is off, as the plugin does.
+        /// </summary>
+        public static bool? StartScanWithoutChooser(int helperId)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            using (AndroidJavaClass helperClass = new AndroidJavaClass(HelperClass))
+            {
+                if (helperClass.GetStatic<bool>("isScanning"))
+                {
+                    return false;
+                }
+
+                AndroidJavaObject helper;
+                try
+                {
+                    helper = helperClass.CallStatic<AndroidJavaObject>("GetInstanceById", helperId);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning("[HexR-BLE] Could not find the plugin's helper " + helperId + ": " + e.Message);
+                    return null;
+                }
+                if (helper == null)
+                {
+                    return null;
+                }
+
+                using (helper)
+                using (AndroidJavaClass adapterClass = new AndroidJavaClass("android.bluetooth.BluetoothAdapter"))
+                using (AndroidJavaObject adapter = adapterClass.CallStatic<AndroidJavaObject>("getDefaultAdapter"))
+                {
+                    if (adapter == null || !adapter.Call<bool>("isEnabled"))
+                    {
+                        throw new InvalidOperationException("Bluetooth is off on this headset.");
+                    }
+
+                    AndroidJavaObject callback, endOfScan, found;
+                    try
+                    {
+                        callback = helper.Get<AndroidJavaObject>("scanCallback");
+                        endOfScan = helper.Get<AndroidJavaObject>("scanningRunnable");
+                        found = helper.Get<AndroidJavaObject>("bleDevices");
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogWarning("[HexR-BLE] Could not reach the plugin's scan internals: " + e.Message);
+                        return null;
+                    }
+
+                    using (callback)
+                    using (endOfScan)
+                    using (found)
+                    {
+                        if (callback == null || endOfScan == null || found == null)
+                        {
+                            return null;
+                        }
+
+                        helperClass.SetStatic("isScanning", true);
+                        try
+                        {
+                            found.Call("clear");
+                            using (AndroidJavaObject scanner = adapter.Call<AndroidJavaObject>("getBluetoothLeScanner"))
+                            {
+                                scanner.Call("startScan", callback);
+                            }
+                            using (AndroidJavaClass looperClass = new AndroidJavaClass("android.os.Looper"))
+                            using (AndroidJavaObject mainLooper = looperClass.CallStatic<AndroidJavaObject>("getMainLooper"))
+                            using (AndroidJavaObject handler = new AndroidJavaObject("android.os.Handler", mainLooper))
+                            {
+                                handler.Call<bool>("postDelayed", endOfScan, 8000L);
+                            }
+                        }
+                        catch (Exception)
+                        {
+                            helperClass.SetStatic("isScanning", false);
+                            throw;
+                        }
+                    }
+                }
+            }
+            Debug.Log("[HexR-BLE] scanning without the plugin's device chooser (Android 12+, location not needed)");
+            return true;
+#else
+            return null;
+#endif
+        }
+
+        /// <summary>
         /// Signal strength (dBm) by address for the devices of the last scan, read from the
         /// plugin's cache, whose entries carry the RSSI the scan heard them at. Empty off Android,
         /// or if the plugin's cache holds no strengths. Never throws.
